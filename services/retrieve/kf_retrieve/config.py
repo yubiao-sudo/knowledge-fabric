@@ -67,22 +67,54 @@ def load_answerability_calibration() -> Dict[str, Any]:
 
 
 def answerability_threshold_for(tenant: str, kb: Optional[str],
-                                basis: str = "cosine") -> Optional[float]:
+                                basis: str = "cosine",
+                                tier: str = "") -> Optional[float]:
     """取该 (tenant, kb) 在指定判据下的标定阈值；没有标定则返回 None（由调用方回退）。
 
     `basis`：
-      * `"cosine"` —— embedding 余弦（默认判据）；
+      * `"cosine"` —— embedding 余弦；
       * `"rerank"` —— cross-encoder 概率（分离度更好，但要求重排真的跑过）。
 
-    两种判据的量纲与分布完全不同，必须各自标定、各自存阈值，不能混用。
+    `tier`：重排窗口所在显存档位（`adaptive.py`）。**必须**按档位取阈值——
+    候选窗口变了，cross-encoder 的分数分布就变了，跨档位复用会让拒答行为系统性偏移。
+
+    查找顺序：
+      1. `kb[key].tiers[tier][basis]` —— 该档位专标，最准；
+      2. `kb[key][basis]` —— 旧格式（无档位概念），仅在未指定 tier 时使用；
+      3. None —— 调用方回退到全局底线，并在 trace 里标注"未标定"。
     """
     table = (load_answerability_calibration().get("kb") or {})
     field = "rerank_threshold" if basis == "rerank" else "threshold"
+    # cosine 是 embedding 层面的分数，与重排窗口无关 → 永远读扁平值，
+    # 不能因为传了 tier 就变成"找不到档位专用值"而返回 None。
+    tier = "" if basis != "rerank" else tier
     for key in ((f"{tenant}/{kb}" if kb else ""), f"{tenant}/default"):
         entry = table.get(key)
-        if isinstance(entry, dict) and entry.get(field) is not None:
+        if not isinstance(entry, dict):
+            continue
+        tiers = entry.get("tiers") or {}
+        if tier and isinstance(tiers, dict):
+            tier_entry = tiers.get(tier)
+            if isinstance(tier_entry, dict) and tier_entry.get(field) is not None:
+                try:
+                    return float(tier_entry[field])
+                except (TypeError, ValueError):
+                    return None
+        # 只有"没指定档位"才允许读扁平值：扁平值是某次标定时留下的一份，
+        # 无法保证与当前档位一致，混用比不标定更危险。
+        if not tier and entry.get(field) is not None:
             try:
                 return float(entry[field])
             except (TypeError, ValueError):
                 return None
     return None
+
+
+def calibration_tier(tenant: str, kb: Optional[str]) -> str:
+    """该库标定文件里记录的档位（便于诊断"阈值是哪个档位标出来的"）。"""
+    table = (load_answerability_calibration().get("kb") or {})
+    for key in ((f"{tenant}/{kb}" if kb else ""), f"{tenant}/default"):
+        entry = table.get(key)
+        if isinstance(entry, dict):
+            return str(entry.get("tier") or "")
+    return ""

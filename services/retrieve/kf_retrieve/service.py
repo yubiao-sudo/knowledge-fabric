@@ -29,6 +29,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel
 
+from . import adaptive
 from . import fusion as fusion_mod
 from . import graph as graph_mod
 from . import opensearch as osp_mod
@@ -339,16 +340,21 @@ def _run_round(
     t2 = time.perf_counter()
     reranked = False
     rerank_ms = 0.0
+    # 重排窗口按**显存档位**决定，而不是照抄配置里的固定值：
+    # 小卡（4GB）只能排 4 个候选（1.5s），大卡排 20 个才不吃亏。
+    # 配置若写得比档位更小，尊重配置（那是"我就要少排"的显式表达）。
+    rerank_top_n, rerank_tier, rerank_tier_reason = adaptive.effective_top_n(
+        prof.get("rerank_top_n"))
     if prof.get("rerank") and candidates:
         if rerank_client is None:
             rerank_client = try_rerank_client()
         rr = rerank_candidates(
             req.query, candidates,
-            top_n=int(prof.get("rerank_top_n") or 6),
+            top_n=rerank_top_n,
             client=rerank_client,
-            # 打分窗口与返回窗口一致：cross-encoder 开销随候选数线性增长，
-            # 融合后 50 个候选全送进去会让 rerank 阶段到数秒级（真机实测 3.9s）。
-            candidate_limit=int(prof.get("rerank_top_n") or 6),
+            # 打分窗口与返回窗口一致：cross-encoder 开销随「候选数 × 序列长度²」
+            # 增长，融合后 50 个候选全送进去会让 rerank 阶段到数秒级（真机实测 3.9s）。
+            candidate_limit=rerank_top_n,
         )
         candidates = rr["candidates"]
         reranked = bool(rr["reranked"])
@@ -390,12 +396,21 @@ def _run_round(
             notes.append("answerability=rerank 但重排未生效，回落 cosine 判分")
         floor = (assembly_cfg.get("answerability_floor_rerank")
                  if use_rerank else assembly_cfg.get("answerability_floor"))
+        # 阈值**按档位**取：重排窗口决定分数分布，跨档位复用阈值会让拒答系统性偏移。
         calibrated = answerability_threshold_for(
-            req.tenant, req.kb, basis="rerank" if use_rerank else "cosine")
+            req.tenant, req.kb, basis="rerank" if use_rerank else "cosine",
+            tier=rerank_tier if use_rerank else "")
         if calibrated is not None:
             base, threshold_source = calibrated, "per_kb_calibration"
         elif floor is not None:
             base, threshold_source = float(floor), "global_floor"
+            if use_rerank:
+                # 明确告警：这一档还没标定，阈值只是全局兜底，可能偏松/偏紧。
+                notes.append(
+                    f"该库在档位 {rerank_tier} 下未标定答案可达阈值，"
+                    f"已回退全局底线 {float(floor)}；建议运行 "
+                    f"scripts/calibrate_answerability.py"
+                )
         else:
             base = None
         if base is not None:
@@ -455,6 +470,10 @@ def _run_round(
         "threshold_value": norm_threshold,
         # 判据本身也要暴露：cosine 与 rerank 的分数不可比，混看会误判。
         "answerability_method": answerability_method if norm_threshold is not None else None,
+        # 重排窗口自适应：档位名 + 实际窗口，便于解释"为什么这台机器排 4 个、那台排 20 个"。
+        "rerank_tier": rerank_tier,
+        "rerank_top_n": rerank_top_n,
+        "rerank_tier_reason": rerank_tier_reason,
         "agentic_rounds": 0,
         "agentic_stop": "disabled",
         "agentic_rounds_detail": [],

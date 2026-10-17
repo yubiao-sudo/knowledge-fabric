@@ -16,6 +16,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .backends import TEIEmbedClient, build_backend, local_embed_status, try_embed_client
+from . import adaptive
 from .config import load_retrieval_config
 from .profile import profiles_summary
 from .rerank import local_rerank_status, rerank_url
@@ -165,6 +166,9 @@ def health() -> Dict[str, Any]:
             # 本地 cross-encoder 的实际状态：是否就绪、落在哪个设备、用什么精度。
             # 与 embed 段同理——不报告的话，运维只能靠"重排有没有生效"去猜。
             "local": local_rerank_status(),
+            # 按显存自适应出来的重排窗口。窗口大小直接决定延迟与排序质量，
+            # 也让"为什么这台机器排 4 个、那台排 20 个"有据可查。
+            "adaptive": adaptive.status(),
             "note": "url_configured 仅表示环境变量已配置；端点可达性见检索响应的 trace.reranked",
         },
     }

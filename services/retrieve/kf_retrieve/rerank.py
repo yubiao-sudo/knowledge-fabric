@@ -39,6 +39,27 @@ def _env(name: str, default: str = "") -> str:
     return (os.environ.get(name) or default).strip()
 
 
+def _tier_max_length() -> int:
+    """序列上限跟随显存档位（`adaptive.py`），可用 `KF_RERANK_MAX_LEN` 强制覆盖。
+
+    bge-m3 那侧的实测（GTX 1650 4GB, fp16, 12 候选）：
+    maxlen=512 → 9.39s，256 → 4.62s，128 → 2.29s；注意力中间量随 batch×seq² 增长。
+    而 top-1 分数从 0.9004 只降到 0.8722——判"这段文字能否回答该问题"用 256 足够。
+    """
+    forced = _env("KF_RERANK_MAX_LEN", "")
+    if forced:
+        try:
+            return max(64, int(forced))
+        except ValueError:
+            pass
+    try:
+        from .adaptive import current as current_tier
+
+        return current_tier()[0].max_length
+    except Exception:
+        return 256
+
+
 class RerankClient:
     """TEI `/rerank` 客户端。未配置地址时不要构造。"""
 
@@ -83,11 +104,7 @@ class LocalReranker:
                  max_length: int = 0, batch_size: int = 0) -> None:
         self.model_id = model_id or rerank_model_id()
         self.requested_device = device or _env("KF_RERANK_DEVICE", "")
-        # 序列上限默认 256 而非 512：真机实测（GTX 1650 4GB, fp16, 12 候选）
-        #   maxlen=512 → 9.39s，256 → 4.62s，128 → 2.29s
-        # 注意力中间量随 batch×seq² 增长，而 top-1 分数从 0.9004 降到 0.8722
-        # （几乎无损）。判"这段文字能否回答该问题"用 256 token 足够。
-        self.max_length = max_length or int(_env("KF_RERANK_MAX_LEN", "256") or 256)
+        self.max_length = max_length or _tier_max_length()
         self.batch_size = max(1, int(_env("KF_RERANK_BATCH", "12") or 12))
         self._tok = None
         self._model = None

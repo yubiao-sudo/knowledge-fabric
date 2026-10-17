@@ -179,6 +179,9 @@ def main() -> int:
     ap.add_argument("--out", default=OUT)
     ap.add_argument("--no-rerank", action="store_true",
                     help="只标定 cosine，不加载 cross-encoder（省时间）")
+    ap.add_argument("--tier", default="auto",
+                    help="标定哪些显存档位：auto（当前设备，默认）/ all / "
+                         "compact / standard / wide")
     args = ap.parse_args()
 
     client = try_embed_client()
@@ -202,52 +205,96 @@ def main() -> int:
     if args.kb:
         targets = [t for t in targets if t[1] == args.kb]
 
+    # ---- 要标定哪些显存档位 ----
+    from kf_retrieve.adaptive import TIERS, current as current_tier
+
+    live_tier, live_reason = current_tier()
+    if args.tier == "all":
+        tiers = list(TIERS)
+    elif args.tier == "auto":
+        tiers = [live_tier]
+    else:
+        picked = [t for t in TIERS if t.name == args.tier]
+        if not picked:
+            print(f"未知档位 {args.tier}，可选: auto / all / "
+                  + " / ".join(t.name for t in TIERS))
+            return 2
+        tiers = picked
+
+    print(f"当前设备档位: {live_tier.name}（{live_reason}）")
+    print(f"本次标定档位: " + "、".join(
+        f"{t.name}(top_n={t.rerank_top_n}, maxlen={t.max_length})" for t in tiers))
+    if live_tier.name not in {t.name for t in tiers}:
+        print("⚠ 本次标定的档位与当前设备不符，阈值仅对那档生效")
+    print()
+
     result: Dict[str, Any] = {
-        "version": 2,
+        "version": 3,
         "probe_count": len(PROBES),
         "percentile": PERCENTILE,
         "margin": args.margin,
+        "calibrated_tiers": [t.name for t in tiers],
         "kb": {},
     }
 
-    print(f"{'库':<22}{'块':>6}{'cos噪声底':>11}{'cos阈值':>9}"
-          f"{'rr噪声底':>10}{'rr阈值':>8}  分布(cos)")
-    print("-" * 104)
-    for tenant, kb, chunks in targets:
+    header = f"{'库':<22}{'块':>6}{'cos噪声底':>11}{'cos阈值':>9}"
+    for t in tiers:
+        header += f"{t.name + '阈值':>14}"
+    print(header)
+    print("-" * (48 + 14 * len(tiers)))
+
+    total_tiers = len(tiers)
+    for idx, (tenant, kb, chunks) in enumerate(targets, 1):
+        # 每库开跑前先打一行并 flush：标定要跑几十分钟，没有实时进度
+        # 运维无法判断"是在算还是卡死了"。
+        print(f"[{idx}/{len(targets)}] {tenant}/{kb} ({chunks} 块, "
+              f"{total_tiers} 个档位)...", flush=True)
         scores = [s for s in (top1_scores(client, p, tenant, kb) for p in PROBES)
                   if s is not None]
         if not scores:
             print(f"{tenant + '/' + kb:<22}{chunks:>6}{'N/A':>11}{'-':>9}"
-                  f"{'-':>10}{'-':>8}  集合不可用")
+                  + "".join(f"{'-':>14}" for _ in tiers) + "  集合不可用", flush=True)
             continue
+
+        # cosine 判据与重排窗口无关（它是 embedding 层面的分数），只算一次。
         floor = percentile(scores, PERCENTILE)
         threshold = round(floor + args.margin, 4)
-
-        rr_scores = []
-        if reranker is not None:
-            rr_scores = [s for s in (rerank_top1(reranker, p, tenant, kb, client)
-                                     for p in PROBES) if s is not None]
-        rr_floor = percentile(rr_scores, PERCENTILE) if rr_scores else None
-        rr_threshold = round(rr_floor + args.margin, 4) if rr_floor is not None else None
-
-        key = f"{tenant}/{kb}"
         entry: Dict[str, Any] = {
             "noise_floor_p90": round(floor, 4),
             "threshold": threshold,
             "probes": len(scores),
             "chunks": chunks,
             "probe_scores": [round(s, 4) for s in sorted(scores)],
+            "tiers": {},
         }
-        if rr_threshold is not None:
-            entry["rerank_noise_floor_p90"] = round(rr_floor, 4)
-            entry["rerank_threshold"] = rr_threshold
-            entry["rerank_probe_scores"] = [round(s, 4) for s in sorted(rr_scores)]
-        result["kb"][key] = entry
 
-        rng = f"{min(scores):.4f}~{max(scores):.4f}"
-        rr_cols = (f"{rr_floor:>10.4f}{rr_threshold:>8.4f}" if rr_floor is not None
-                   else f"{'-':>10}{'-':>8}")
-        print(f"{key:<22}{chunks:>6}{floor:>11.4f}{threshold:>9.4f}{rr_cols}  {rng}")
+        cells = ""
+        if reranker is not None:
+            for t in tiers:
+                # 让重排器按该档位的真实参数工作，否则标出来的分布对不上运行时
+                reranker.max_length = t.max_length
+                reranker.batch_size = max(1, min(12, t.rerank_top_n))
+                rr_scores = [
+                    s for s in (rerank_top1(reranker, p, tenant, kb, client,
+                                            k=t.rerank_top_n)
+                                for p in PROBES)
+                    if s is not None
+                ]
+                if not rr_scores:
+                    cells += f"{'-':>14}"
+                    continue
+                rr_floor = percentile(rr_scores, PERCENTILE)
+                rr_threshold = round(rr_floor + args.margin, 4)
+                entry["tiers"][t.name] = {
+                    "rerank_top_n": t.rerank_top_n,
+                    "max_length": t.max_length,
+                    "rerank_noise_floor_p90": round(rr_floor, 4),
+                    "rerank_threshold": rr_threshold,
+                    "rerank_probe_scores": [round(s, 4) for s in sorted(rr_scores)],
+                }
+                cells += f"{rr_threshold:>14.4f}"
+        result["kb"][f"{tenant}/{kb}"] = entry
+        print(f"{tenant + '/' + kb:<22}{chunks:>6}{floor:>11.4f}{threshold:>9.4f}{cells}", flush=True)
 
     if args.dry_run:
         print("\n[dry-run] 未写文件")
