@@ -41,3 +41,6 @@ models/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# service logs (start.cmd / start_all.py 生成)
+logs/
