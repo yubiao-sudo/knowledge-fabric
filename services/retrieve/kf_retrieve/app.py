@@ -282,6 +282,23 @@ def exchange_pairing(payload: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+@app.post("/v1/auth/token")
+def create_token(request: Request, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """本机控制台专用：直接签发令牌，不消费任何接入码。
+
+    控制台需要令牌来做「Agent 视角预览」，但它**绝不能**兑换那张展示给用户的
+    接入码——否则用户抄到的是已经失效的码（真机踩过）。
+    """
+    _require_loopback(request)
+    tenant = str(payload.get("tenant") or "").strip()
+    if not tenant:
+        raise HTTPException(status_code=400, detail="tenant 不能为空")
+    try:
+        return auth.create_token(tenant, name=str(payload.get("name") or "console"))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"签发令牌失败: {exc}")
+
+
 @app.get("/v1/auth/keys")
 def list_keys(request: Request) -> Dict[str, Any]:
     _require_loopback(request)

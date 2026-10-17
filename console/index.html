@@ -491,7 +491,11 @@ $("btn-acc-health").onclick = async () => {
   }
 };
 
-/* ---------- 生成接入码 ---------- */
+/* ---------- 生成接入码 ----------
+   🔴 关键：这里**绝不兑换**这张码。
+   接入码是"一次性、给人抄"的凭证；控制台如果顺手兑换掉，
+   用户抄到手的码在生成那一刻就已失效（真机踩过：agent 报"该接入码已被使用"）。
+   控制台自己预览用的令牌走 /v1/auth/token 直签，与接入码完全分开。 */
 $("btn-pairing").onclick = async () => {
   const btn = $("btn-pairing");
   btn.disabled = true; btn.textContent = "生成中…";
@@ -499,28 +503,15 @@ $("btn-pairing").onclick = async () => {
     const data = await accReq("/v1/auth/pairing", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tenant: accTenant(), name: "console" }),
+      body: JSON.stringify({ tenant: accTenant(), name: "agent" }),
     });
     $("pairing-code").textContent = data.code;
     $("pairing-box").hidden = false;
-    $("pairing-hint").textContent =
-      `租户 ${data.tenant_id} · ${data.ttl_sec} 秒内有效 · 只能用一次。` +
-      `把它填进 agent 的「接入码」输入框，agent 会自动换取长期令牌。`;
-    // 顺手兑换一个令牌，供下面的预览与"复制配置"使用
-    try {
-      const ex = await accReq("/v1/auth/exchange", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: data.code, name: "console-preview" }),
-      });
-      ACC_TOKEN = ex.token || "";
-      $("config-token-note").textContent =
-        "已自动兑换令牌，下面配置里的 kb_token 可直接用（明文只显示这一次）。";
-      renderAgentConfig();
-      loadKeys();
-    } catch (e) {
-      $("config-token-note").textContent = "自动兑换失败：" + e.message;
-    }
+    $("pairing-hint").innerHTML =
+      `租户 <b>${esc(data.tenant_id)}</b> · ${data.ttl_sec} 秒内有效 · <b>只能用一次</b>。` +
+      `把它填进 agent 的「接入码」输入框即可（本页面<strong>不会</strong>消耗它）。`;
+    renderAgentConfig();
+    loadKeys();
   } catch (e) {
     $("pairing-box").hidden = false;
     $("pairing-code").textContent = "失败";
@@ -531,6 +522,22 @@ $("btn-pairing").onclick = async () => {
     btn.disabled = false; btn.textContent = "生成接入码";
   }
 };
+
+/* 预览用的令牌：按需直签（仅本机），与接入码分开 */
+async function ensurePreviewToken() {
+  if (ACC_TOKEN) return ACC_TOKEN;
+  const data = await accReq("/v1/auth/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tenant: accTenant(), name: "console-preview" }),
+  });
+  ACC_TOKEN = data.token || "";
+  $("config-token-note").textContent =
+    "预览令牌已签发（仅本机可签，明文只在内存里，不写 localStorage）。";
+  renderAgentConfig();
+  loadKeys();
+  return ACC_TOKEN;
+}
 
 $("btn-copy-code").onclick = () => copyText($("pairing-code").textContent);
 
@@ -609,6 +616,7 @@ $("btn-preview").onclick = async () => {
   const box = $("preview-result");
   box.innerHTML = "";
   try {
+    await ensurePreviewToken();
     const data = await accReq("/v1/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -247,7 +247,35 @@ def create_pairing(tenant_id: str, ttl_sec: int = 0, name: str = "") -> Dict[str
             "hint": "把该接入码填进 agent 的「接入码」输入框即可自动换取令牌"}
 
 
+def create_token(tenant_id: str, name: str = "console") -> Dict[str, Any]:
+    """**本机控制台专用**：直接签发长期令牌，不经过接入码。
+
+    为什么需要这条路径：接入码是"一次性、给人抄"的凭证，控制台如果为了自己
+    预览就把它兑换掉，用户手里那张码在生成那一刻就失效了
+    （真机踩过：用户填进 agent 报"该接入码已被使用"）。
+    所以控制台自用令牌走这里直签，接入码**只留给 agent 兑换**。
+
+    调用方必须已确认是本机（见 `app.py` 的 `_require_loopback`）。
+    """
+    tenant_id = (tenant_id or "").strip()
+    if not tenant_id:
+        raise ValueError("tenant_id 不能为空")
+    raw = new_token()
+    key_id = "key_" + secrets.token_hex(8)
+    with _connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO api_keys(id, tenant_id, name, token_hash, prefix) "
+            "VALUES (%s, %s, %s, %s, %s)",
+            (key_id, tenant_id, name or "console", hash_token(raw), raw[:8]),
+        )
+        conn.commit()
+    invalidate_cache()
+    return {"token": raw, "tenant_id": tenant_id, "key_id": key_id,
+            "note": "令牌只在此刻返回一次，请妥善保存"}
+
+
 def exchange_pairing(code: str, name: str = "") -> Optional[Dict[str, Any]]:
+    """用接入码换长期令牌。码只能用一次、且必须未过期。"""
     """用接入码换长期令牌。码只能用一次、且必须未过期。"""
     code = (code or "").strip().upper()
     if not code.startswith("KF-") or not db_dsn():

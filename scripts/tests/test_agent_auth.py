@@ -170,3 +170,56 @@ def test_loopback_request_tolerates_broken_request():
         pass
 
     assert auth.is_loopback_request(Broken()) is False
+# --------------------------------------------------------------- 控制台直签令牌
+def test_create_token_requires_tenant():
+    """租户必填：不填就会签出一个"没有归属"的令牌，等于绕过租户隔离。"""
+    with pytest.raises(ValueError):
+        auth.create_token("   ")
+
+
+def test_create_token_is_separate_from_pairing(monkeypatch):
+    """控制台直签**不能**消费接入码。
+
+    这是真机事故的回归锁：控制台原本在"生成接入码"后顺手兑换，
+    导致用户抄到的码当场失效（agent 报"该接入码已被使用"）。
+    现在两条路径彻底分开——直签只往 api_keys 写，不碰 pairing_codes。
+    """
+    touched = {"pairing": False}
+
+    class FakeCur:
+        def execute(self, sql, params=None):
+            if "pairing_codes" in sql:
+                touched["pairing"] = True
+
+        def fetchone(self):
+            return None
+
+        # 代码里是 `with conn.cursor() as cur`，游标也要支持上下文协议
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    class FakeConn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def cursor(self):
+            return FakeCur()
+
+        def commit(self):
+            pass
+
+    monkeypatch.setattr(auth, "db_dsn", lambda: "postgresql://x")
+    monkeypatch.setattr(auth, "_connect", lambda: FakeConn())
+    auth.create_token("acme", "console")
+    assert touched["pairing"] is False, "直签令牌不该碰到 pairing_codes"
+
+
+def test_loopback_guard_blocks_foreign_signer(monkeypatch):
+    """跨机不能直接签发令牌（否则每台机器都能给自己发）。"""
+    assert auth.is_loopback_request(_FakeReq("8.8.8.8", "evil.example.com")) is False
