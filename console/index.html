@@ -340,8 +340,10 @@
       </div>
       <div class="row">
         <button id="btn-pairing" style="flex:1">生成接入码</button>
+        <button class="ghost" id="btn-acc-health" style="flex:1">检测连接</button>
         <button class="ghost" id="btn-keys">刷新令牌</button>
       </div>
+      <div id="acc-health" class="hint" style="margin:8px 0 0"></div>
     </div>
 
     <div id="pairing-box" hidden style="margin-top:14px">
@@ -449,6 +451,46 @@ async function accReq(path, opts) {
   return req(accBase(), path, Object.assign({}, opts, { headers }));
 }
 
+/* ---------- 检测连接 ----------
+   把"到底是服务没起、地址填错、还是被代理挡了"一次说清楚。
+   否则用户只看到"生成接入码失败"，无从判断。 */
+$("btn-acc-health").onclick = async () => {
+  const box = $("acc-health");
+  const base = accBase();
+  box.textContent = `正在检测 ${base || "(地址为空)"} …`;
+  if (!base) {
+    box.innerHTML = `<span style="color:#f88">服务地址为空</span>：请在上面填 http://127.0.0.1:8082`;
+    return;
+  }
+  const t0 = performance.now();
+  try {
+    const res = await fetch(base + "/health", { cache: "no-store" });
+    const ms = Math.round(performance.now() - t0);
+    if (!res.ok) {
+      box.innerHTML = `<span style="color:#f88">HTTP ${res.status}</span> · ${esc(base)} · ${ms}ms`;
+      return;
+    }
+    const h = await res.json();
+    const auth = h.auth || {};
+    const rk = (h.reranker || {}).local || {};
+    box.innerHTML =
+      `<span style="color:#34d399">连通</span> · ${esc(base)} · ${ms}ms<br>` +
+      `鉴权：required=<b class="mono">${auth.required}</b> ` +
+      `mode=${esc(String(auth.mode || "—"))} ` +
+      `provisioned=${auth.provisioned}<br>` +
+      `重排：ready=<b class="mono">${rk.ready}</b> device=${esc(String(rk.device || "—"))}` +
+      (rk.load_error ? `<br><span style="color:#f88">重排加载失败：${esc(String(rk.load_error))}</span>` : "");
+  } catch (e) {
+    // 浏览器在"服务没起"和"被 CORS 拦"时都报 Failed to fetch，只能提示排查方向
+    box.innerHTML =
+      `<span style="color:#f88">连不上</span> · ${esc(base)}<br>` +
+      `原因：${esc(String(e && e.message ? e.message : e))}<br>` +
+      `依次检查：① 服务是否在跑（scripts\\start.cmd）　` +
+      `② 地址是否 http://127.0.0.1:8082　` +
+      `③ 是否把 127.0.0.1 的流量交给了代理`;
+  }
+};
+
 /* ---------- 生成接入码 ---------- */
 $("btn-pairing").onclick = async () => {
   const btn = $("btn-pairing");
@@ -482,7 +524,9 @@ $("btn-pairing").onclick = async () => {
   } catch (e) {
     $("pairing-box").hidden = false;
     $("pairing-code").textContent = "失败";
-    $("pairing-hint").textContent = e.message;
+    // 把目标地址一起打出来：否则只看 "HTTP 403" 没法判断是地址错还是被拦
+    $("pairing-hint").textContent =
+      `${e.message}　（请求目标 ${accBase() || "(地址为空)"}/v1/auth/pairing）`;
   } finally {
     btn.disabled = false; btn.textContent = "生成接入码";
   }

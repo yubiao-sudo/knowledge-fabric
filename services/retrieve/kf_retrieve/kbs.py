@@ -42,14 +42,26 @@ def _connect():
 
 def list_kbs(tenant: Optional[str] = None, limit: int = 200) -> List[Dict[str, Any]]:
     """列出有活跃切片的知识库。`tenant=None` 表示全部租户（仅本机控制台会用到）。"""
+    items, _ = list_kbs_ex(tenant, limit)
+    return items
+
+
+def list_kbs_ex(tenant: Optional[str] = None,
+                limit: int = 200) -> tuple[List[Dict[str, Any]], str]:
+    """同 `list_kbs`，但同时返回一条说明（为空表示一切正常）。
+
+    为什么要把错误带出来：原实现对异常是"吞掉并返回空列表"，于是
+    **数据库连不上**与**确实没有知识库**在界面上长得一模一样。
+    这类静默会让排查绕远路，宁可多返回一个 note。
+    """
     if not db_dsn():
-        return []
+        return [], "未配置 DATABASE_APP_URL / DATABASE_URL，无法读取知识库目录"
     try:
         with _connect() as conn, conn.cursor() as cur:
             cur.execute("SELECT * FROM kf_kb_catalog(%s)", (tenant,))
             rows = cur.fetchall()
-    except Exception:
-        return []
+    except Exception as exc:
+        return [], f"读取知识库目录失败：{type(exc).__name__}: {exc}"
     out: List[Dict[str, Any]] = []
     for tenant_id, kb_id, documents, chunks, with_dense, last_at in rows[:limit]:
         out.append({
@@ -63,7 +75,7 @@ def list_kbs(tenant: Optional[str] = None, limit: int = 200) -> List[Dict[str, A
             "dense_ratio": round(int(with_dense) / max(1, int(chunks)), 4),
             "last_ingested_at": last_at.isoformat() if last_at else None,
         })
-    return out
+    return out, ""
 
 
 def get_kb(tenant: str, kb: str) -> Optional[Dict[str, Any]]:

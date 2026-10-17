@@ -51,6 +51,10 @@ LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
 _MODE_CACHE: Dict[str, Any] = {"at": 0.0, "value": False}
 _MODE_TTL = 5.0
 
+# 令牌校验的正向缓存：digest -> (过期时间, 校验结果)
+_TOKEN_CACHE: Dict[str, Any] = {}
+_TOKEN_TTL = 10.0
+
 
 def db_dsn() -> str:
     return (os.environ.get("DATABASE_APP_URL")
@@ -98,6 +102,7 @@ def is_provisioned() -> bool:
 
 def invalidate_cache() -> None:
     _MODE_CACHE["at"] = 0.0
+    _TOKEN_CACHE.clear()
 
 
 def auth_required() -> bool:
@@ -119,6 +124,40 @@ def is_loopback(host: Optional[str]) -> bool:
     return h in LOOPBACK_HOSTS
 
 
+def is_loopback_request(request: Any) -> bool:
+    """判断请求是否来自本机。
+
+    **不能只看 `request.client.host`**。踩过的坑：用户开了系统/浏览器代理后，
+    连 `127.0.0.1:8082` 的请求也可能先经代理再发出，于是服务端看到的来源 IP
+    不是回环地址，本机控制台被自己的"仅限本机"判定挡住
+    —— 表现就是「生成接入码失败」。
+
+    所以改成"两处任一为本机即可"：
+      * 来源 IP 是回环；或
+      * 请求的 **Host 头**指向回环（`127.0.0.1` / `localhost` / `[::1]`）。
+
+    安全性：Host 头虽可伪造，但要利用它必须先能连上服务；而控制台场景下
+    检索服务通常只 bind 127.0.0.1（见 scripts/run_retrieve.cmd），外部本就不可达。
+    部署到公网时应同时收紧 CORS 与这里。
+    """
+    try:
+        if is_loopback(getattr(getattr(request, "client", None), "host", None)):
+            return True
+    except Exception:
+        pass
+    try:
+        host_header = (request.headers.get("host") or "").strip().lower()
+        if host_header.startswith("["):            # [::1]:8082
+            name = host_header[1:].split("]", 1)[0]
+        elif ":" in host_header:                   # 127.0.0.1:8082
+            name = host_header.rsplit(":", 1)[0]
+        else:
+            name = host_header
+        return name.strip("[]") in LOOPBACK_HOSTS
+    except Exception:
+        return False
+
+
 # ------------------------------------------------------------------ 令牌
 def hash_token(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -129,11 +168,22 @@ def new_token() -> str:
 
 
 def verify_token(raw: str) -> Optional[Dict[str, Any]]:
-    """校验令牌，返回 `{tenant_id, key_id}`；无效返回 None。"""
+    """校验令牌，返回 `{tenant_id, key_id}`；无效返回 None。
+
+    带一个短 TTL 的**正向缓存**：每个请求都开一次数据库连接，
+    在控制台连点或 agent 高频检索时会把 Postgres 连接数打满
+    （默认 max_connections=100）。缓存只存"校验通过的"，吊销后最多
+    10 秒内仍可能命中——所以 `revoke_key()` 会主动 `invalidate_cache()`，
+    把这段窗口压到"仅跨进程时存在"。
+    """
     raw = (raw or "").strip()
     if not raw.startswith(TOKEN_PREFIX) or not db_dsn():
         return None
     digest = hash_token(raw)
+    now = time.time()
+    cached = _TOKEN_CACHE.get(digest)
+    if cached and now < cached[0]:
+        return dict(cached[1])
     try:
         with _connect() as conn, conn.cursor() as cur:
             cur.execute(
@@ -145,14 +195,17 @@ def verify_token(raw: str) -> Optional[Dict[str, Any]]:
             if not row:
                 return None
             key_id, tenant_id = row
-            # last_used_at 按需更新，失败不影响鉴权
             try:
                 cur.execute("UPDATE api_keys SET last_used_at = now() WHERE id = %s",
                             (key_id,))
                 conn.commit()
             except Exception:
                 conn.rollback()
-            return {"key_id": key_id, "tenant_id": tenant_id}
+            info = {"key_id": key_id, "tenant_id": tenant_id}
+            if len(_TOKEN_CACHE) > 500:      # 简单上限，避免无界增长
+                _TOKEN_CACHE.clear()
+            _TOKEN_CACHE[digest] = (now + _TOKEN_TTL, info)
+            return dict(info)
     except Exception:
         return None
 

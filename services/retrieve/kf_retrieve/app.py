@@ -223,8 +223,7 @@ def require_agent_or_loopback(request: Request) -> Optional[Dict[str, Any]]:
     info = auth.verify_token(_bearer(request))
     if info is not None:
         return info
-    host = request.client.host if request.client else None
-    if auth.is_loopback(host):
+    if auth.is_loopback_request(request):
         # 本机且未带令牌 → 管理员视角（可看全部租户）
         return None
     raise HTTPException(
@@ -237,11 +236,15 @@ def _require_loopback(request: Request) -> None:
     """签发接入码/管理令牌只允许本机。
 
     远端 agent 能**兑换**接入码，但不能**签发**——否则任何人都能给自己发令牌。
+    判定同时看来源 IP 与 Host 头：开了代理时来源 IP 可能不是回环，
+    只看 IP 会把本机控制台自己挡在外面（表现为「生成接入码失败」）。
     """
-    host = request.client.host if request.client else None
-    if not auth.is_loopback(host):
-        raise HTTPException(status_code=403,
-                            detail="该操作仅允许在本机（127.0.0.1）执行")
+    if not auth.is_loopback_request(request):
+        raise HTTPException(
+            status_code=403,
+            detail="该操作仅允许在本机执行：请用 127.0.0.1 打开控制台，"
+                   "并确认没有把 127.0.0.1 的流量交给代理",
+        )
 
 
 @app.post("/v1/auth/pairing")
@@ -302,9 +305,16 @@ def list_kbs(request: Request, tenant: Optional[str] = None) -> Dict[str, Any]:
     # 带令牌时只允许看自己租户的库（租户隔离不能靠调用方自觉）
     if info is not None:
         tenant = info["tenant_id"]
-    items = kbs.list_kbs(tenant)
-    return {"count": len(items), "items": items,
-            "note": "按 chunks 实时聚合；dense_ratio<1 说明含重摄入前写入的旧切片"}
+    items, note = kbs.list_kbs_ex(tenant)
+    out: Dict[str, Any] = {
+        "count": len(items),
+        "items": items,
+        "note": "按 chunks 实时聚合；dense_ratio<1 说明含重摄入前写入的旧切片",
+    }
+    if note:
+        # 错误要显式带出：否则"库连不上"与"确实没有库"在界面上无法区分
+        out["error"] = note
+    return out
 
 
 @app.get("/v1/kb/{tenant}/{kb}")

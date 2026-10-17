@@ -15,7 +15,7 @@ import tempfile
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -28,6 +28,7 @@ from .clients import (
     qdrant_url,
     tei_embed_url,
 )
+from . import auth
 from .models import IngestContext
 from .parse import SUPPORTED_SUFFIXES, discover_documents
 from .pipeline import ingestion_summary, run_ingest
@@ -123,6 +124,19 @@ class IngestDirRequest(BaseModel):
     match: str = ""
 
 
+def _guard_ingest(request: Request, tenant: str) -> None:
+    """摄入前置鉴权：本机控制台免令牌，跨机必须带令牌且租户一致。
+
+    此前摄入接口**完全没有鉴权**——任何能访问 8083 的进程都能往任意租户、
+    任意知识库里灌文档。作为"agent 的知识库"被外部接入后这是不可接受的。
+    """
+    try:
+        auth.require_ingest_tenant(request.headers, tenant,
+                                   request.client.host if request.client else None)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+
+
 @app.get("/health")
 def health() -> Dict[str, Any]:
     """依赖是否配置：全为 false 时仍可 `dry_run` 摄入（零外部依赖）。
@@ -151,6 +165,7 @@ def health() -> Dict[str, Any]:
 
 @app.post("/v1/ingest")
 def ingest(
+    request: Request,
     file: UploadFile = File(..., description="待摄入的文档（PDF / Markdown）"),
     tenant: str = Form("default"),
     kb: str = Form("default"),
@@ -170,6 +185,7 @@ def ingest(
     返回与 CLI `--json` 同口径的摘要。`dry_run=true` 时只跑到切片，
     不触网、不落库，用于上传前预览切片效果。
     """
+    _guard_ingest(request, tenant)
     filename = file.filename or "upload.pdf"
     suffix = os.path.splitext(filename)[1] or ".pdf"
     tmp_path = ""
@@ -229,7 +245,7 @@ def ingest(
 
 
 @app.post("/v1/ingest-dir")
-def ingest_dir(req: IngestDirRequest) -> Dict[str, Any]:
+def ingest_dir(req: IngestDirRequest, request: Request) -> Dict[str, Any]:
     """**目录批量摄入**：遍历服务端本机目录，逐个摄入其中的 PDF / Markdown。
 
     与 `POST /v1/ingest` 走同一条流水线；差异只有两点，都是为了「一个公司有很多文档」：
@@ -242,6 +258,8 @@ def ingest_dir(req: IngestDirRequest) -> Dict[str, Any]:
     target = os.path.abspath(os.path.expanduser(req.dir))
     if not os.path.isdir(target):
         raise HTTPException(status_code=400, detail=f"目录不存在或不可读：{target}")
+
+    _guard_ingest(request, req.tenant)
 
     todo, skipped = discover_documents(target, recursive=req.recursive, match=req.match or None)
     collection = default_collection(req.tenant, req.kb)
@@ -322,6 +340,7 @@ def ingest_dir(req: IngestDirRequest) -> Dict[str, Any]:
 
 @app.get("/v1/documents")
 def list_documents(
+    request: Request,
     tenant: str = "default",
     kb: str = "",
     limit: int = 50,
@@ -330,6 +349,7 @@ def list_documents(
 
     Postgres 不可用时返回空列表 + note（控制台因此仍能正常渲染，只是列表为空）。
     """
+    _guard_ingest(request, tenant)
     conn = connect_pg(database_url())
     if conn is None:
         return {"documents": [], "notes": ["Postgres 未配置或不可用，无法列出文档"]}

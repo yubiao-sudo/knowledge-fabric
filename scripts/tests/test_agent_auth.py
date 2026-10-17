@@ -129,3 +129,44 @@ def test_status_shape(monkeypatch):
     s = auth.status()
     for key in ("mode", "required", "provisioned", "note"):
         assert key in s
+
+# --------------------------------------------------------------- 代理场景
+class _FakeReq:
+    """最小 Request 替身：只需要 client.host 与 headers。"""
+
+    def __init__(self, host, host_header=""):
+        self.client = type("C", (), {"host": host})()
+        self.headers = {"host": host_header} if host_header else {}
+
+
+def test_loopback_request_accepts_loopback_ip():
+    assert auth.is_loopback_request(_FakeReq("127.0.0.1", "127.0.0.1:8082")) is True
+
+
+@pytest.mark.parametrize("host_header", [
+    "127.0.0.1:8082", "localhost:8082", "[::1]:8082", "127.0.0.1", "localhost",
+])
+def test_loopback_request_trusts_loopback_host_header(host_header):
+    """开了代理时来源 IP 可能不是回环，但 Host 仍指向本机——必须放行。
+
+    这正是真机上"生成接入码失败"的原因：只看 client.host 会把本机控制台
+    自己挡在外面（403）。
+    """
+    assert auth.is_loopback_request(_FakeReq("192.168.1.9", host_header)) is True
+
+
+@pytest.mark.parametrize("host,host_header", [
+    ("8.8.8.8", "evil.example.com"),
+    ("8.8.8.8", ""),
+    ("", ""),
+    (None, "example.com:80"),
+])
+def test_loopback_request_rejects_foreign(host, host_header):
+    assert auth.is_loopback_request(_FakeReq(host, host_header)) is False
+
+
+def test_loopback_request_tolerates_broken_request():
+    class Broken:
+        pass
+
+    assert auth.is_loopback_request(Broken()) is False
