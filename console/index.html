@@ -5,445 +5,1022 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Knowledge Fabric · 控制台</title>
 <style>
+  /* ============================================================
+     设计令牌
+     单一来源：颜色 / 间距 / 圆角 / 阴影都在这里，组件只引用变量。
+     改主题只需要动这一块。
+     ============================================================ */
   :root{
-    --bg:#0b1020; --panel:#121a2e; --panel-2:#0e1526; --line:#22304d;
-    --text:#e8edf7; --muted:#93a2bf; --accent:#6ea8ff; --accent-2:#8b7cff;
-    --ok:#39d98a; --warn:#ffc046; --err:#ff6b6b;
-    --radius:14px; --shadow:0 10px 30px rgba(0,0,0,.35);
+    --bg:#0a0f1d;
+    --bg-2:#070b15;
+    --surface:#111a2c;
+    --surface-2:#0d1524;
+    --surface-3:#16203a;
+    --line:#1f2c47;
+    --line-strong:#2b3c5e;
+
+    --text:#e9eef9;
+    --text-dim:#a7b4cf;
+    --text-faint:#6b7c9c;
+
+    --accent:#6ea8ff;
+    --accent-2:#8b7cff;
+    --accent-soft:rgba(110,168,255,.13);
+
+    --ok:#3ddc97;
+    --ok-soft:rgba(61,220,151,.13);
+    --warn:#ffc046;
+    --warn-soft:rgba(255,192,70,.12);
+    --err:#ff6b6b;
+    --err-soft:rgba(255,107,107,.13);
+
+    --r-sm:8px; --r:12px; --r-lg:16px;
+    --shadow:0 12px 34px rgba(0,0,0,.38);
+    --shadow-sm:0 4px 14px rgba(0,0,0,.24);
+    --sidebar:236px;
+    --mono:"Cascadia Code",Consolas,Menlo,"Courier New",monospace;
   }
+
   *{box-sizing:border-box}
+  html,body{height:100%}
   body{
-    margin:0; background:
-      radial-gradient(1100px 600px at 12% -10%, #1b2a52 0%, transparent 60%),
-      radial-gradient(900px 500px at 100% 0%, #241f4d 0%, transparent 55%),
+    margin:0;
+    background:
+      radial-gradient(1000px 520px at 8% -8%, #16264a 0%, transparent 58%),
+      radial-gradient(820px 460px at 100% -4%, #221d47 0%, transparent 52%),
       var(--bg);
-    color:var(--text); font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
-    min-height:100vh;
+    color:var(--text);
+    font:14px/1.62 -apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
   }
-  .wrap{max-width:1180px; margin:0 auto; padding:24px 20px 60px}
-  header.top{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:18px}
-  .logo{width:40px;height:40px;flex:none}
-  .brand h1{font-size:19px; margin:0; letter-spacing:.3px}
-  .brand p{margin:2px 0 0; color:var(--muted); font-size:12.5px}
-  .spacer{flex:1}
-  .pills{display:flex; gap:8px; flex-wrap:wrap}
-  .pill{display:inline-flex; align-items:center; gap:7px; padding:6px 11px; border-radius:999px;
-        background:var(--panel); border:1px solid var(--line); font-size:12.5px; color:var(--muted)}
-  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);box-shadow:0 0 0 0 rgba(0,0,0,0)}
-  .dot.ok{background:var(--ok); box-shadow:0 0 10px rgba(57,217,138,.7)}
-  .dot.err{background:var(--err); box-shadow:0 0 10px rgba(255,107,107,.6)}
-  .card{background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,0)) ,var(--panel);
-        border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow)}
-  .settings{padding:12px 14px; margin-bottom:16px; display:grid; gap:10px;
-            grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
-  label{display:block; font-size:12px; color:var(--muted); margin-bottom:5px}
-  input,select,textarea{width:100%; padding:9px 11px; border-radius:10px; border:1px solid var(--line);
-        background:var(--panel-2); color:var(--text); font:13.5px/1.5 inherit; outline:none}
-  input:focus,select:focus,textarea:focus{border-color:var(--accent); box-shadow:0 0 0 3px rgba(110,168,255,.15)}
-  input[type=checkbox]{width:auto}
-  .tabs{display:flex; gap:6px; margin-bottom:14px; border-bottom:1px solid var(--line); padding-bottom:0}
-  .tab{padding:10px 16px; border-radius:10px 10px 0 0; cursor:pointer; color:var(--muted);
-       border:1px solid transparent; border-bottom:none; font-weight:600; font-size:13.5px;
-       display:inline-flex; align-items:center; gap:8px; background:transparent}
-  .tab:hover{color:var(--text)}
-  .tab.active{color:var(--text); background:var(--panel); border-color:var(--line); position:relative}
-  .tab.active::after{content:"";position:absolute; left:0; right:0; bottom:-1px; height:2px; background:var(--panel)}
-  .panel{padding:18px}
-  .grid{display:grid; gap:14px; grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
-  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end}
-  button{cursor:pointer; border:none; border-radius:10px; padding:10px 18px; font:600 13.5px/1.4 inherit;
-         background:linear-gradient(135deg,var(--accent),var(--accent-2)); color:#08101f}
-  button.ghost{background:transparent; border:1px solid var(--line); color:var(--text)}
-  button:disabled{opacity:.55; cursor:not-allowed}
-  .drop{border:1.5px dashed var(--line); border-radius:12px; padding:26px 18px; text-align:center;
-        color:var(--muted); transition:.15s; background:var(--panel-2)}
-  .drop.hot{border-color:var(--accent); color:var(--text); background:rgba(110,168,255,.08)}
-  .drop strong{color:var(--text)}
-  .hint{font-size:12px; color:var(--muted); margin-top:6px}
-  .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin-top:14px}
-  .stat{background:var(--panel-2); border:1px solid var(--line); border-radius:11px; padding:11px 13px}
-  .stat b{display:block; font-size:20px; letter-spacing:.4px}
-  .stat span{font-size:11.5px; color:var(--muted)}
-  table{width:100%; border-collapse:collapse; font-size:13px}
-  th,td{text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top}
-  th{color:var(--muted); font-weight:600; font-size:12px; text-transform:none}
-  code,.mono{font-family:"Cascadia Code",Consolas,Menlo,monospace; font-size:12.3px}
-  .ev{border:1px solid var(--line); border-radius:12px; padding:13px 14px; margin-bottom:12px; background:var(--panel-2)}
-  .ev h4{margin:0 0 6px; font-size:14px; display:flex; gap:8px; align-items:center; flex-wrap:wrap}
-  .chip{font-size:11px; padding:2px 8px; border-radius:999px; background:rgba(110,168,255,.14);
-        color:var(--accent); border:1px solid rgba(110,168,255,.3)}
-  .chip.score{background:rgba(57,217,138,.14); color:var(--ok); border-color:rgba(57,217,138,.3)}
-  .chip.page{background:rgba(139,124,255,.14); color:#b3a8ff; border-color:rgba(139,124,255,.3)}
-  .ev pre{margin:8px 0 0; white-space:pre-wrap; word-break:break-word; color:#dfe7f7; font-size:12.8px}
-  .meta{font-size:11.5px; color:var(--muted); margin-top:7px; word-break:break-all}
-  .notes{margin:10px 0 0; padding:10px 12px; border-left:3px solid var(--warn); border-radius:8px;
-         background:rgba(255,192,70,.08); font-size:12.5px; color:#ffd98a}
-  .notes.err{border-color:var(--err); background:rgba(255,107,107,.09); color:#ffb3b3}
-  .empty{color:var(--muted); text-align:center; padding:26px; font-size:13px}
-  .flow{display:flex; gap:6px; flex-wrap:wrap; margin:4px 0 0}
-  .flow span{font-size:11.5px; padding:3px 9px; border-radius:999px; background:var(--panel-2);
-             border:1px solid var(--line); color:var(--muted)}
-  .flow span.on{color:var(--accent); border-color:rgba(110,168,255,.45)}
-  details{margin-top:10px}
-  summary{cursor:pointer; color:var(--muted); font-size:12.5px}
-  .busy{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.35);
-        border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px}
+  a{color:var(--accent); text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  /* ============================================================ 布局骨架 */
+  .app{display:flex; min-height:100vh}
+
+  /* ---------- 侧边栏 ---------- */
+  .sidebar{
+    width:var(--sidebar); flex:none;
+    display:flex; flex-direction:column;
+    padding:20px 14px 16px;
+    border-right:1px solid var(--line);
+    background:linear-gradient(180deg, rgba(17,26,44,.9), rgba(10,15,29,.9));
+    position:sticky; top:0; height:100vh;
+  }
+  .brand{display:flex; align-items:center; gap:11px; padding:0 6px 18px}
+  .brand svg{width:34px; height:34px; flex:none}
+  .brand h1{margin:0; font-size:15px; letter-spacing:.2px; line-height:1.25}
+  .brand span{display:block; font-size:11px; color:var(--text-faint); margin-top:2px; font-weight:400}
+
+  .nav{display:flex; flex-direction:column; gap:4px; margin-bottom:auto}
+  .tab{
+    display:flex; align-items:center; gap:10px;
+    padding:9px 11px; border-radius:10px;
+    border:1px solid transparent; background:transparent;
+    color:var(--text-dim); font:600 13.5px/1.4 inherit;
+    cursor:pointer; text-align:left; width:100%;
+    transition:background .14s, color .14s, border-color .14s;
+  }
+  .tab svg{width:16px; height:16px; flex:none; opacity:.85}
+  .tab:hover{background:rgba(255,255,255,.04); color:var(--text)}
+  .tab.active{
+    background:var(--accent-soft); color:var(--text);
+    border-color:rgba(110,168,255,.28);
+  }
+  .tab.active svg{opacity:1; color:var(--accent)}
+  .tab:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  /* 侧边栏底部：服务状态（替代原来挤在标题旁的两个小圆点） */
+  .conn{margin-top:16px; padding-top:14px; border-top:1px solid var(--line)}
+  .conn-title{font-size:11px; color:var(--text-faint); letter-spacing:.4px; margin:0 0 8px 6px}
+  .svc{display:flex; align-items:center; gap:9px; padding:6px 6px; border-radius:8px; font-size:12.5px}
+  .svc:hover{background:rgba(255,255,255,.03)}
+  .svc b{margin-left:auto; font-weight:600; font-size:11.5px; color:var(--text-dim)}
+  .dot{width:8px; height:8px; border-radius:50%; background:var(--text-faint); flex:none}
+  .dot.ok{background:var(--ok); box-shadow:0 0 9px rgba(61,220,151,.75)}
+  .dot.err{background:var(--err); box-shadow:0 0 9px rgba(255,107,107,.6)}
+  .dot.busy{background:var(--warn); animation:pulse 1.1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+
+  /* ---------- 主区 ---------- */
+  .main{flex:1; min-width:0; display:flex; flex-direction:column}
+  .topbar{
+    position:sticky; top:0; z-index:20;
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    padding:14px 26px;
+    border-bottom:1px solid var(--line);
+    background:rgba(10,15,29,.86);
+    backdrop-filter:blur(12px);
+  }
+  .topbar h2{margin:0; font-size:16px; letter-spacing:.2px}
+  .topbar .sub{margin:1px 0 0; font-size:12px; color:var(--text-faint)}
+  .topbar .grow{flex:1}
+  .tbar-field{display:flex; align-items:center; gap:6px}
+  .tbar-field label{margin:0; font-size:11.5px; color:var(--text-faint); white-space:nowrap}
+  .tbar-field input{width:96px; padding:6px 9px; font-size:12.5px; border-radius:8px}
+  .content{padding:22px 26px 70px; max-width:1120px; width:100%}
+
+  /* ============================================================ 组件 */
+  .card{
+    background:linear-gradient(180deg, rgba(255,255,255,.022), rgba(255,255,255,0)),
+               var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--r-lg);
+    box-shadow:var(--shadow-sm);
+    margin-bottom:16px;
+    overflow:hidden;
+  }
+  .card-h{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    padding:14px 18px; border-bottom:1px solid var(--line);
+    background:rgba(255,255,255,.014);
+  }
+  .card-h h3{margin:0; font-size:14px; letter-spacing:.2px}
+  .card-h .grow{flex:1}
+  .card-b{padding:18px}
+  .card-b.tight{padding:0}
+
+  label{display:block; font-size:11.5px; color:var(--text-dim); margin-bottom:6px; font-weight:500}
+  input,select,textarea{
+    width:100%; padding:9px 11px; border-radius:var(--r-sm);
+    border:1px solid var(--line); background:var(--surface-2);
+    color:var(--text); font:13.5px/1.5 inherit; outline:none;
+    transition:border-color .14s, box-shadow .14s;
+  }
+  input::placeholder,textarea::placeholder{color:var(--text-faint)}
+  input:focus,select:focus,textarea:focus{
+    border-color:var(--accent); box-shadow:0 0 0 3px rgba(110,168,255,.14);
+  }
+  input[type=checkbox]{width:auto; accent-color:var(--accent)}
+  textarea{resize:vertical; min-height:64px}
+  select{cursor:pointer}
+
+  /* 按钮：主 / 次 / 危险 / 小 */
+  button{
+    display:inline-flex; align-items:center; justify-content:center; gap:7px;
+    cursor:pointer; border:1px solid transparent; border-radius:var(--r-sm);
+    padding:9px 16px; font:600 13px/1.4 inherit;
+    background:linear-gradient(135deg, var(--accent), var(--accent-2));
+    color:#08101f;
+    transition:filter .14s, transform .06s, border-color .14s, background .14s;
+    white-space:nowrap;
+  }
+  button:hover:not(:disabled){filter:brightness(1.08)}
+  button:active:not(:disabled){transform:translateY(1px)}
+  button.ghost{background:transparent; border-color:var(--line-strong); color:var(--text)}
+  button.ghost:hover:not(:disabled){background:rgba(255,255,255,.05); border-color:var(--accent)}
+  button.danger{background:transparent; border-color:rgba(255,107,107,.45); color:#ff9d9d}
+  button.danger:hover:not(:disabled){background:var(--err-soft)}
+  button.sm{padding:5px 11px; font-size:11.5px; border-radius:6px}
+  button:disabled{opacity:.45; cursor:not-allowed; filter:none}
+  button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  /* 按钮内加载态：文字换成它，宽度不跳 */
+  .spin{
+    width:12px; height:12px; flex:none; border-radius:50%;
+    border:2px solid currentColor; border-top-color:transparent;
+    animation:spin .7s linear infinite;
+  }
   @keyframes spin{to{transform:rotate(360deg)}}
-  .foot{margin-top:22px; color:var(--muted); font-size:12px; text-align:center}
-  a{color:var(--accent)}
+
+  /* 栅格 */
+  .grid{display:grid; gap:14px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+  .grid .span2{grid-column:span 2}
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+  .row.end{align-items:flex-end}
+  .stack{display:flex; flex-direction:column; gap:14px}
+  .sep{height:1px; background:var(--line); margin:16px 0}
+
+  .hint{font-size:11.5px; color:var(--text-faint); line-height:1.6}
+  .hint b{color:var(--text-dim)}
+  .hint code{background:var(--surface-2); padding:1px 5px; border-radius:4px; color:var(--text-dim)}
+
+  code,.mono{font-family:var(--mono); font-size:12.2px}
+  pre{margin:0}
+  pre.mono{
+    background:var(--surface-2); border:1px solid var(--line);
+    border-radius:var(--r); padding:12px 14px; overflow:auto;
+    font-size:12.2px; line-height:1.55; color:#d7e2f5;
+  }
+
+  /* 统计块 */
+  .stats{display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(112px,1fr))}
+  .stat{
+    background:var(--surface-2); border:1px solid var(--line);
+    border-radius:var(--r); padding:11px 13px;
+  }
+  .stat b{display:block; font-size:19px; letter-spacing:.3px; line-height:1.2}
+  .stat span{font-size:11px; color:var(--text-faint)}
+
+  /* 徽标 */
+  .chip{
+    display:inline-flex; align-items:center; gap:5px;
+    font-size:11px; padding:2px 8px; border-radius:999px;
+    background:var(--accent-soft); color:var(--accent);
+    border:1px solid rgba(110,168,255,.28); font-weight:500;
+  }
+  .chip.ok{background:var(--ok-soft); color:var(--ok); border-color:rgba(61,220,151,.3)}
+  .chip.warn{background:var(--warn-soft); color:var(--warn); border-color:rgba(255,192,70,.3)}
+  .chip.err{background:var(--err-soft); color:#ff9d9d; border-color:rgba(255,107,107,.32)}
+  .chip.violet{background:rgba(139,124,255,.14); color:#b9aeff; border-color:rgba(139,124,255,.3)}
+
+  /* 提示条 */
+  .note{
+    display:flex; gap:9px; align-items:flex-start;
+    padding:11px 13px; border-radius:var(--r);
+    border-left:3px solid var(--accent);
+    background:var(--accent-soft);
+    font-size:12.5px; color:#cfe0ff; line-height:1.6;
+  }
+  .note.ok{border-color:var(--ok); background:var(--ok-soft); color:#b6f2d4}
+  .note.warn{border-color:var(--warn); background:var(--warn-soft); color:#ffe3a6}
+  .note.err{border-color:var(--err); background:var(--err-soft); color:#ffc2c2}
+  .note > div{min-width:0}
+
+  /* 空状态 */
+  .empty{
+    display:flex; flex-direction:column; align-items:center; gap:8px;
+    padding:34px 20px; color:var(--text-faint); font-size:13px; text-align:center;
+  }
+  .empty svg{width:26px; height:26px; opacity:.5}
+
+  /* 文件拖放 */
+  .drop{
+    border:1.5px dashed var(--line-strong); border-radius:var(--r);
+    padding:24px 18px; text-align:center; color:var(--text-dim);
+    background:var(--surface-2); cursor:pointer;
+    transition:border-color .15s, background .15s, color .15s;
+  }
+  .drop:hover{border-color:var(--accent); color:var(--text); background:rgba(110,168,255,.05)}
+  .drop.hot{border-color:var(--accent); background:var(--accent-soft); color:var(--text)}
+  .drop strong{color:var(--text)}
+  .drop .fname{font-size:14px; font-weight:600; color:var(--text)}
+
+  /* 表格 */
+  table{width:100%; border-collapse:collapse; font-size:12.8px}
+  th,td{text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top}
+  th{
+    color:var(--text-faint); font-weight:600; font-size:11.5px;
+    background:var(--surface-2); position:sticky; top:0; z-index:1;
+  }
+  tbody tr:hover{background:rgba(255,255,255,.025)}
+  td.mono{font-family:var(--mono); font-size:12px}
+
+  /* 证据卡 */
+  .ev{
+    border:1px solid var(--line); border-radius:var(--r);
+    background:var(--surface-2); margin-bottom:11px; overflow:hidden;
+  }
+  .ev-h{
+    display:flex; gap:7px; align-items:center; flex-wrap:wrap;
+    padding:10px 13px; border-bottom:1px solid var(--line);
+    background:rgba(255,255,255,.016);
+  }
+  .ev-b{padding:12px 13px}
+  .ev-b pre{white-space:pre-wrap; word-break:break-word; color:#dde6f6; font-size:12.6px; line-height:1.65}
+  .ev-m{
+    padding:9px 13px; border-top:1px solid var(--line);
+    font-size:11.5px; color:var(--text-faint); word-break:break-all;
+  }
+
+  /* 可折叠 */
+  details{margin-top:12px}
+  summary{
+    cursor:pointer; color:var(--text-faint); font-size:12px;
+    padding:6px 0; user-select:none;
+  }
+  summary:hover{color:var(--text-dim)}
+
+  /* 接入码展示 */
+  .code-box{
+    display:flex; align-items:center; gap:10px;
+    padding:4px;
+  }
+  .code-box .val{
+    flex:1; text-align:center; font-family:var(--mono);
+    font-size:22px; letter-spacing:3px; font-weight:600;
+    padding:12px 14px; border-radius:var(--r);
+    border:1px dashed var(--line-strong); background:var(--surface-2);
+    color:var(--accent);
+  }
+  .code-box .val.bad{color:var(--err); font-size:15px; letter-spacing:0}
+
+  /* 检索快捷问题 */
+  .quick{display:flex; gap:7px; flex-wrap:wrap; margin-top:9px}
+  .quick button{
+    background:var(--surface-2); border:1px solid var(--line);
+    color:var(--text-dim); font-weight:500; font-size:12px; padding:5px 11px;
+    border-radius:999px;
+  }
+  .quick button:hover:not(:disabled){border-color:var(--accent); color:var(--text)}
+
+  /* 主操作按钮给足宽度：只有两个字时 61px 看着像次要按钮 */
+  .primary-wide{min-width:104px}
+
+  /* 令牌/文档这类可能很长的列表，限高 + 内部滚动。
+     否则十几个令牌就能把后面的「配置」和「预览」推到一两千像素之外。 */
+  .scroll-y{max-height:340px; overflow-y:auto; overflow-x:hidden}
+
+  /* Toast */
+  #toast-host{
+    position:fixed; top:16px; right:18px; z-index:999;
+    display:flex; flex-direction:column; gap:9px; pointer-events:none;
+    max-width:min(380px, 88vw);
+  }
+  .toast{
+    pointer-events:auto;
+    display:flex; gap:9px; align-items:flex-start;
+    padding:11px 14px; border-radius:var(--r);
+    background:var(--surface-3); border:1px solid var(--line-strong);
+    box-shadow:var(--shadow); font-size:12.5px; line-height:1.55;
+    animation:slideIn .18s ease-out;
+  }
+  .toast.ok{border-color:rgba(61,220,151,.45)}
+  .toast.warn{border-color:rgba(255,192,70,.45)}
+  .toast.err{border-color:rgba(255,107,107,.45)}
+  .toast.leaving{animation:slideOut .18s ease-in forwards}
+  @keyframes slideIn{from{opacity:0; transform:translateX(18px)}to{opacity:1; transform:none}}
+  @keyframes slideOut{to{opacity:0; transform:translateX(18px)}}
+
+  .foot{margin-top:26px; color:var(--text-faint); font-size:11.5px; text-align:center}
+
+  /* 窄屏：侧边栏变成顶部横向导航 */
+  @media (max-width: 860px){
+    .app{flex-direction:column}
+    .sidebar{
+      width:auto; height:auto; position:static;
+      border-right:none; border-bottom:1px solid var(--line);
+      padding:14px;
+    }
+    .nav{flex-direction:row; flex-wrap:wrap}
+    .tab{width:auto}
+    .conn{margin-top:12px}
+    .content{padding:16px 14px 60px}
+    .topbar{padding:12px 14px}
+    .grid .span2{grid-column:auto}
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="app">
 
-  <header class="top">
-    <svg class="logo" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-      <rect x="2" y="2" width="44" height="44" rx="12" fill="url(#g)"/>
-      <path d="M14 33V15m0 9h6l7-9m-7 9 8 9" stroke="#08101f" stroke-width="3"
-            stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="30.5" cy="24" r="3.2" fill="#08101f"/>
-      <defs><linearGradient id="g" x1="0" y1="0" x2="48" y2="48">
-        <stop stop-color="#6ea8ff"/><stop offset="1" stop-color="#8b7cff"/>
-      </linearGradient></defs>
-    </svg>
+  <!-- ===================================================== 侧边栏 -->
+  <aside class="sidebar">
     <div class="brand">
-      <h1>Knowledge Fabric · 控制台</h1>
-      <p>上传文档即建库 · 检索即证据（含字符级引用）· 全链路优雅降级</p>
-    </div>
-    <div class="spacer"></div>
-    <div class="pills">
-      <span class="pill"><i class="dot" id="dot-ingest"></i>摄入 <b class="mono" id="lbl-ingest">—</b></span>
-      <span class="pill"><i class="dot" id="dot-retrieve"></i>检索 <b class="mono" id="lbl-retrieve">—</b></span>
-    </div>
-  </header>
-
-  <div class="card settings">
-    <div>
-      <label>摄入服务地址（kf-ingest）</label>
-      <input id="base-ingest" value="http://127.0.0.1:8083" spellcheck="false" />
-    </div>
-    <div>
-      <label>检索服务地址（kf-retrieve）</label>
-      <input id="base-retrieve" value="http://127.0.0.1:8082" spellcheck="false" />
-    </div>
-    <div>
-      <label>租户 tenant / 知识库 kb</label>
-      <div class="row" style="gap:8px">
-        <input id="tenant" value="acme" spellcheck="false" style="flex:1;min-width:90px" />
-        <input id="kb" value="demo" spellcheck="false" style="flex:1;min-width:90px" />
-      </div>
-    </div>
-    <div class="row">
-      <button class="ghost" id="btn-check" style="flex:1">检测连接</button>
-    </div>
-  </div>
-  <p class="hint" style="margin:-6px 0 14px">
-    提示：地址与租户/库会记住（localStorage）。服务未起时页面仍可用，仅显示「未连接」，不会报错。
-  </p>
-
-  <div class="tabs">
-    <div class="tab active" data-tab="ingest">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-           stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0L8 8m4-4 4 4"/>
-        <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>摄入文档
-    </div>
-    <div class="tab" data-tab="docs">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-           stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h6l2 2h6a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/>
-        <path d="M9 12h6M9 16h4"/></svg>文档库
-    </div>
-    <div class="tab" data-tab="search">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-           stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg>检索问答
-    </div>
-    <div class="tab" data-tab="access">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-           stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/>
-        <path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>接入 Agent
-    </div>
-  </div>
-
-  <!-- ========== 摄入 ========== -->
-  <section class="card panel" id="panel-ingest">
-    <div class="grid">
+      <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+        <rect x="2" y="2" width="44" height="44" rx="12" fill="url(#g)"/>
+        <path d="M14 33V15m0 9h6l7-9m-7 9 8 9" stroke="#08101f" stroke-width="3"
+              stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="30.5" cy="24" r="3.2" fill="#08101f"/>
+        <defs><linearGradient id="g" x1="0" y1="0" x2="48" y2="48">
+          <stop stop-color="#6ea8ff"/><stop offset="1" stop-color="#8b7cff"/>
+        </linearGradient></defs>
+      </svg>
       <div>
-        <label>文档（PDF / Markdown）</label>
-        <div class="drop" id="drop">
-          <div id="dropText">把 PDF / Markdown 拖到这里，或 <strong>点击选择文件</strong></div>
-          <input type="file" id="file" accept=".pdf,.md,.markdown,.mdown" hidden />
-          <div class="hint">单文件上传：PDF 走 PyMuPDF（版面 / 标题 / 表格 / 页眉页脚），
-            Markdown 走结构化解析（标题 / 列表 / 表格 / 围栏代码；无分页，页码恒为 0）</div>
-        </div>
-      </div>
-      <div>
-        <label>文档 ID（留空取文件名）</label>
-        <input id="doc-id" placeholder="manual_v1" spellcheck="false" />
-        <label style="margin-top:10px">版本号 version</label>
-        <input id="version" type="number" value="1" min="1" />
-        <label style="margin-top:10px">语言 lang（留空自动判定）</label>
-        <input id="lang" placeholder="zh / en" spellcheck="false" />
-      </div>
-      <div>
-        <label>文档类型 doc_type（影响切片路由）</label>
-        <select id="doc-type">
-          <option value="">自动判定</option>
-          <option value="manual">manual 手册</option>
-          <option value="contract">contract 合同</option>
-          <option value="regulation">regulation 法规</option>
-          <option value="code">code 代码</option>
-        </select>
-        <label style="margin-top:10px">切片策略（留空按文档特征自动路由）</label>
-        <select id="strategy">
-          <option value="">自动路由（推荐）</option>
-          <option value="doc_structured">doc_structured 结构化递归</option>
-          <option value="clause_atomic">clause_atomic 条款原子</option>
-          <option value="code_aware">code_aware 代码语法</option>
-          <option value="semantic">semantic 语义断点</option>
-          <option value="visual_page">visual_page 页级视觉</option>
-          <option value="table_centric">table_centric 表格中心</option>
-        </select>
-      </div>
-      <div>
-        <label>运行选项</label>
-        <div class="row" style="gap:16px; align-items:center">
-          <label style="display:flex;gap:7px;align-items:center;margin:0;color:var(--text)">
-            <input type="checkbox" id="dry-run" /> 预览（dry-run，不落库不触网）
-          </label>
-        </div>
-        <div class="row" style="margin-top:8px">
-          <label style="display:flex;gap:7px;align-items:center;margin:0;color:var(--text)">
-            <input type="checkbox" id="enrich" checked /> 生成类增强（需 vLLM，缺失自动跳过）
-          </label>
-        </div>
-        <div class="row" style="margin-top:8px">
-          <label style="display:flex;gap:7px;align-items:center;margin:0;color:var(--text)">
-            <input type="checkbox" id="graph" /> 建图 GraphRAG（--graph，同时开启该库图检索）
-          </label>
-        </div>
-        <div style="margin-top:8px">
-          <label>块级 ACL（可选；逗号分隔 <span class="mono">type:id</span>，<span class="mono">!type:id</span> 为 deny）</label>
-          <input id="acl" spellcheck="false" placeholder="如 user:alice,group:eng,!user:u9（留空 = 公开）" />
-        </div>
-        <div class="flow" id="flow" style="margin-top:12px"></div>
+        <h1>Knowledge Fabric</h1>
+        <span>企业知识底座 · 控制台</span>
       </div>
     </div>
 
-    <div class="row" style="margin-top:16px">
-      <button id="btn-ingest">上传并摄入</button>
-      <span id="ingest-status" class="hint"></span>
+    <nav class="nav">
+      <button class="tab active" data-tab="ingest">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0L8 8m4-4 4 4"/>
+          <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        摄入文档
+      </button>
+      <button class="tab" data-tab="docs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h6l2 2h6a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/>
+          <path d="M9 12h6M9 16h4"/></svg>
+        文档库
+      </button>
+      <button class="tab" data-tab="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg>
+        检索问答
+      </button>
+      <button class="tab" data-tab="access">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        接入 Agent
+      </button>
+      <button class="tab" data-tab="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 15a1.6 1.6 0 0 0-1.6-1H1a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 3 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9 3a1.6 1.6 0 0 0 1-1.6V1a2 2 0 1 1 4 0v.1A1.6 1.6 0 0 0 15 3a1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.6 1.6 0 0 0 21 9v.1a1.6 1.6 0 0 0 1.6 1H23a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
+        服务设置
+      </button>
+    </nav>
+
+    <div class="conn">
+      <p class="conn-title">服务状态</p>
+      <div class="svc" title="kf-ingest（摄入）">
+        <i class="dot" id="dot-ingest"></i><span>摄入 8083</span><b id="lbl-ingest">—</b>
+      </div>
+      <div class="svc" title="kf-retrieve（检索）">
+        <i class="dot" id="dot-retrieve"></i><span>检索 8082</span><b id="lbl-retrieve">—</b>
+      </div>
+      <button class="ghost sm" id="btn-check" style="width:100%; margin-top:9px">检测连接</button>
+    </div>
+  </aside>
+
+  <!-- ===================================================== 主区 -->
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <h2 id="page-title">摄入文档</h2>
+        <p class="sub" id="page-sub">上传 PDF / Markdown，走完整流水线后即可检索</p>
+      </div>
+      <div class="grow"></div>
+      <!-- 全局租户/库：所有页共用，避免每页重复填 -->
+      <div class="tbar-field">
+        <label for="tenant">租户</label>
+        <input id="tenant" value="acme" spellcheck="false" title="所有操作共用的租户" />
+      </div>
+      <div class="tbar-field">
+        <label for="kb">知识库</label>
+        <input id="kb" value="demo" spellcheck="false" title="所有操作共用的知识库" />
+      </div>
     </div>
 
-    <div id="ingest-result"></div>
+    <div class="content">
 
-    <hr style="border:none;border-top:1px solid var(--line);margin:22px 0 16px" />
+      <!-- =================================== 摄入 -->
+      <section id="panel-ingest">
+        <div class="card">
+          <div class="card-h">
+            <h3>单个文档</h3>
+            <span class="chip">PDF / Markdown</span>
+            <div class="grow"></div>
+            <span class="hint" id="ingest-status"></span>
+          </div>
+          <div class="card-b">
+            <div class="grid">
+              <div class="span2">
+                <label>选择文件</label>
+                <div class="drop" id="drop">
+                  <div id="dropText">把文件拖到这里，或 <strong>点击选择</strong></div>
+                  <input type="file" id="file" accept=".pdf,.md,.markdown,.mdown" hidden />
+                </div>
+                <p class="hint" style="margin-top:7px">
+                  PDF 走 PyMuPDF（版面 / 标题 / 表格 / 页眉页脚）；Markdown 走结构化解析（无分页，页码恒为 0）
+                </p>
+              </div>
+              <div>
+                <label>文档 ID（留空取文件名）</label>
+                <input id="doc-id" placeholder="manual_v1" spellcheck="false" />
+                <label style="margin-top:12px">版本号</label>
+                <input id="version" type="number" value="1" min="1" />
+              </div>
+            </div>
 
-    <div>
-      <b>目录批量摄入</b>
-      <span class="hint">（一个公司很多文档时的入口：填<b>服务端本机</b>的目录路径，逐个摄入其中的 PDF / Markdown）</span>
-      <div class="grid" style="margin-top:10px">
-        <div style="grid-column:span 2">
-          <label>目录路径（服务器上的绝对路径）</label>
-          <input id="dir-path" spellcheck="false" placeholder="E:\docs\公司知识库" />
-        </div>
-        <div>
-          <label>文件名过滤 match（可选）</label>
-          <input id="dir-match" spellcheck="false" placeholder="如 灯塔（先小范围试跑）" />
-        </div>
-        <div>
-          <label>选项</label>
-          <div class="row" style="gap:16px;align-items:center">
-            <label style="display:flex;gap:7px;align-items:center;margin:0;color:var(--text)">
-              <input type="checkbox" id="dir-recursive" /> 递归子目录
-            </label>
-            <label style="display:flex;gap:7px;align-items:center;margin:0;color:var(--text)">
-              <input type="checkbox" id="dir-dry" /> 预览（dry-run）
-            </label>
+            <div class="sep"></div>
+
+            <div class="grid">
+              <div>
+                <label>语言（留空自动判定）</label>
+                <input id="lang" placeholder="zh / en" spellcheck="false" />
+              </div>
+              <div>
+                <label>文档类型（影响切片路由）</label>
+                <select id="doc-type">
+                  <option value="">自动判定</option>
+                  <option value="contract">合同 contract</option>
+                  <option value="manual">手册 manual</option>
+                  <option value="policy">制度 policy</option>
+                  <option value="resume">简历 resume</option>
+                  <option value="code">代码 code</option>
+                  <option value="general">通用 general</option>
+                </select>
+              </div>
+              <div>
+                <label>切片策略</label>
+                <select id="strategy">
+                  <option value="">按文档类型自动路由</option>
+                  <option value="doc_structured">doc_structured 结构递归</option>
+                  <option value="table_centric">table_centric 表格优先</option>
+                  <option value="clause_aware">clause_aware 条款感知</option>
+                  <option value="code_aware">code_aware 代码感知</option>
+                  <option value="semantic">semantic 语义断点</option>
+                  <option value="fixed_window">fixed_window 固定窗口</option>
+                </select>
+              </div>
+              <div>
+                <label>访问控制 ACL（可选）</label>
+                <input id="acl" spellcheck="false" placeholder="user:alice,group:eng,!user:u9" />
+              </div>
+            </div>
+
+            <div class="sep"></div>
+
+            <div class="row" style="gap:18px">
+              <label style="display:flex; gap:7px; align-items:center; margin:0; color:var(--text)">
+                <input type="checkbox" id="dry-run" /> 预览（dry-run，不落库不触网）
+              </label>
+              <label style="display:flex; gap:7px; align-items:center; margin:0; color:var(--text)">
+                <input type="checkbox" id="enrich" checked /> 生成类增强（缺 vLLM 自动跳过）
+              </label>
+              <label style="display:flex; gap:7px; align-items:center; margin:0; color:var(--text)">
+                <input type="checkbox" id="graph" /> 建图 GraphRAG
+              </label>
+            </div>
+
+            <div class="row" style="margin-top:16px">
+              <button id="btn-ingest" class="primary-wide" disabled>
+                <span>开始摄入</span>
+              </button>
+              <div class="row" id="flow" style="gap:6px"></div>
+            </div>
+
+            <div id="ingest-result" style="margin-top:16px"></div>
           </div>
         </div>
-      </div>
-      <div class="row" style="margin-top:12px">
-        <button id="btn-ingest-dir">扫描目录并批量摄入</button>
-        <span id="dir-status" class="hint"></span>
-      </div>
-      <div class="hint" style="margin-top:8px">
-        租户 / 库 / 版本 / 语言 / 策略 / 建图 / ACL 沿用上方单文件区的设置；
-        <b>doc_id 由文件名派生</b>（保证多文档互不覆盖）。不支持的格式（.docx/.txt/.jpg 等）
-        会在结果里<b>列出</b>，不会被静默跳过。
-      </div>
-      <div id="dir-result"></div>
+
+        <div class="card">
+          <div class="card-h">
+            <h3>目录批量摄入</h3>
+            <span class="chip violet">服务端本机目录</span>
+            <div class="grow"></div>
+            <span class="hint" id="dir-status"></span>
+          </div>
+          <div class="card-b">
+            <p class="hint" style="margin:0 0 14px">
+              遍历<b>服务端本机</b>的一个目录，逐个摄入其中的 PDF / Markdown。
+              租户 / 库 / 版本 / 语言 / 策略 / 建图 / ACL 沿用上面「单个文档」里的设置；
+              <b>doc_id 由文件名派生</b>，多文档互不覆盖。不支持的格式会在结果里列出，不会被静默跳过。
+            </p>
+            <div class="grid">
+              <div class="span2">
+                <label>目录路径（服务端绝对路径）</label>
+                <input id="dir-path" spellcheck="false" placeholder="E:\docs\公司知识库" />
+              </div>
+              <div>
+                <label>文件名过滤（可选，先小范围试跑）</label>
+                <input id="dir-match" spellcheck="false" placeholder="如 灯塔" />
+              </div>
+            </div>
+            <div class="row" style="margin-top:14px; gap:18px">
+              <label style="display:flex; gap:7px; align-items:center; margin:0; color:var(--text)">
+                <input type="checkbox" id="dir-recursive" /> 递归子目录
+              </label>
+              <label style="display:flex; gap:7px; align-items:center; margin:0; color:var(--text)">
+                <input type="checkbox" id="dir-dry" /> 预览（dry-run）
+              </label>
+            </div>
+            <div class="row" style="margin-top:14px">
+              <button class="ghost" id="btn-ingest-dir">扫描目录并批量摄入</button>
+            </div>
+            <div id="dir-result" style="margin-top:16px"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =================================== 文档库 -->
+      <section id="panel-docs" hidden>
+        <div class="card">
+          <div class="card-h">
+            <h3>文档库</h3>
+            <span class="hint">按租户 / 库列出，块数取当前版本的活跃块</span>
+            <div class="grow"></div>
+            <button class="ghost sm" id="btn-refresh-docs">刷新</button>
+          </div>
+          <div class="card-b tight">
+            <div id="docs-result"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =================================== 检索 -->
+      <section id="panel-search" hidden>
+        <div class="card">
+          <div class="card-h">
+            <h3>检索问答</h3>
+            <span class="chip">evidence-only</span>
+            <div class="grow"></div>
+            <button class="ghost sm" id="btn-profiles">刷新档位</button>
+          </div>
+          <div class="card-b">
+            <label for="query">查询语句（Ctrl / ⌘ + Enter 直接检索）</label>
+            <textarea id="query" rows="2" placeholder="例如：密码长度要求是多少位">密码长度要求是多少位</textarea>
+            <div class="quick" id="quick-queries">
+              <button data-q="密码长度要求是多少位">密码要求</button>
+              <button data-q="用户表有哪些字段">用户表字段</button>
+              <button data-q="灯塔的设计目标是什么">灯塔设计目标</button>
+              <button data-q="红烧肉怎么做才好吃">越界测试（应拒答）</button>
+            </div>
+
+            <div class="sep"></div>
+
+            <div class="grid">
+              <div>
+                <label>检索档位 profile</label>
+                <select id="profile"><option value="hybrid_rerank">hybrid_rerank</option></select>
+              </div>
+              <div>
+                <label>召回条数 top_k</label>
+                <input id="top-k" type="number" value="10" min="1" max="100" />
+              </div>
+              <div>
+                <label>上下文预算 max_context_tokens</label>
+                <input id="max-tokens" type="number" value="8000" min="256" step="256" />
+              </div>
+              <div>
+                <label>访问主体 principal（可选）</label>
+                <input id="principal" spellcheck="false" placeholder="user:alice,group:eng" />
+              </div>
+            </div>
+
+            <div class="row" style="margin-top:14px; gap:18px">
+              <label style="display:flex; gap:7px; align-items:center; margin:0; color:var(--text)">
+                <input type="checkbox" id="graph-enabled" /> 启用 Graph 通道
+              </label>
+              <div class="grow"></div>
+              <button id="btn-search" class="primary-wide">
+                <span>检索</span>
+              </button>
+            </div>
+            <p class="hint" style="margin-top:10px">
+              <b>exact_lookup</b> 走结构化精确过滤；<b>graph_global</b> 走 GraphRAG（需该库摄入时开过建图）。
+            </p>
+          </div>
+        </div>
+        <div id="search-result"></div>
+      </section>
+
+      <!-- =================================== 接入 Agent -->
+      <section id="panel-access" hidden>
+        <div class="card">
+          <div class="card-h">
+            <h3>接入 Agent</h3>
+            <span class="chip ok">接入码</span>
+            <div class="grow"></div>
+            <button class="ghost sm" id="btn-acc-health">检测连接</button>
+          </div>
+          <div class="card-b">
+            <p class="hint" style="margin:0 0 14px">
+              这里生成的东西是给 <b>agent 客户端</b>用的：填服务地址 + 接入码，它就能把这个知识库当成自己的 RAG。
+              接入码<b>一次性、10 分钟内有效</b>；兑换出的令牌可长期使用，也能在下面随时吊销。
+              <br>⚠️ 本页面生成接入码时<b>不会</b>消耗它，放心复制。
+            </p>
+
+            <div class="grid">
+              <div class="span2">
+                <label>底座服务地址（agent 那边填这个）</label>
+                <input id="acc-base" value="http://127.0.0.1:8082" spellcheck="false" />
+              </div>
+              <div>
+                <label>租户</label>
+                <input id="acc-tenant" value="acme" spellcheck="false" />
+              </div>
+              <div>
+                <label>知识库</label>
+                <input id="acc-kb" value="demo" spellcheck="false" />
+              </div>
+            </div>
+
+            <div class="row" style="margin-top:14px">
+              <button id="btn-pairing"><span>生成接入码</span></button>
+              <button class="ghost" id="btn-keys">刷新令牌</button>
+            </div>
+
+            <div id="acc-health" class="hint" style="margin-top:12px"></div>
+
+            <div id="pairing-box" hidden style="margin-top:16px">
+              <label>接入码（复制给 agent，10 分钟内有效，用一次即失效）</label>
+              <div class="code-box">
+                <div class="val" id="pairing-code"></div>
+                <button class="ghost" id="btn-copy-code">复制</button>
+              </div>
+              <p class="hint" id="pairing-hint" style="margin-top:9px"></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">
+            <h3>已签发的令牌</h3>
+            <span class="hint">只显示前缀；明文仅在兑换时返回一次</span>
+          </div>
+          <div class="card-b tight">
+            <div id="keys-list" class="scroll-y" style="padding:14px 18px"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">
+            <h3>给 agent 的配置</h3>
+            <div class="grow"></div>
+            <button class="ghost sm" id="btn-copy-config">复制</button>
+          </div>
+          <div class="card-b">
+            <pre class="mono" id="agent-config"></pre>
+            <p class="hint" id="config-token-note" style="margin-top:9px"></p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">
+            <h3>Agent 视角预览</h3>
+            <span class="hint">这就是 agent 调用后拿到的内容</span>
+            <div class="grow"></div>
+            <button class="ghost sm" id="btn-preview">模拟调用</button>
+          </div>
+          <div class="card-b">
+            <div class="row">
+              <input id="acc-query" placeholder="例如：密码长度要求是多少位" spellcheck="false"
+                     value="密码长度要求是多少位" style="flex:1; min-width:220px" />
+            </div>
+            <p class="hint" style="margin-top:9px">
+              没有令牌时本机仍可预览（控制台在本机，属管理员视角）；跨机访问一律需要令牌。
+            </p>
+            <div id="preview-result" style="margin-top:14px"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =================================== 服务设置 -->
+      <section id="panel-settings" hidden>
+        <div class="card">
+          <div class="card-h">
+            <h3>服务地址</h3>
+            <span class="hint">默认值即可；改了会记住（localStorage）</span>
+          </div>
+          <div class="card-b">
+            <div class="grid">
+              <div>
+                <label>摄入服务 kf-ingest</label>
+                <input id="base-ingest" value="http://127.0.0.1:8083" spellcheck="false" />
+                <p class="hint" style="margin-top:6px">负责解析 / 切片 / 嵌入 / 写入 Qdrant，默认 8083（CPU）</p>
+              </div>
+              <div>
+                <label>检索服务 kf-retrieve</label>
+                <input id="base-retrieve" value="http://127.0.0.1:8082" spellcheck="false" />
+                <p class="hint" style="margin-top:6px">负责召回 / 重排 / 拒答判定，默认 8082（GPU）</p>
+              </div>
+            </div>
+            <div class="sep"></div>
+            <div class="row">
+              <button class="ghost" id="btn-settings-check">检测两个服务</button>
+              <span class="hint" id="settings-status"></span>
+            </div>
+            <div class="note" style="margin-top:14px"><div>
+              <b>服务没起？</b>在仓库根目录运行 <code>scripts\start.cmd</code>；
+              停止用 <code>scripts\stop.cmd</code>。首次启动要加载模型，检索服务约需 1–3 分钟预热。
+            </div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">
+            <h3>当前生效的配置</h3>
+            <div class="grow"></div>
+            <button class="ghost sm" id="btn-refresh-settings">刷新</button>
+          </div>
+          <div class="card-b tight">
+            <div id="settings-detail" style="padding:14px 18px"></div>
+          </div>
+        </div>
+      </section>
+
+      <p class="foot">Knowledge Fabric · evidence-only：只给证据与引用，答案由上层 agent 的 LLM 组织</p>
     </div>
-  </section>
-
-  <!-- ========== 文档库 ========== -->
-  <section class="card panel" id="panel-docs" hidden>
-    <div class="row" style="justify-content:space-between">
-      <div><b>文档库</b> <span class="hint">（按租户 / 库列出，块数取当前版本的活跃块）</span></div>
-      <button class="ghost" id="btn-refresh-docs">刷新</button>
-    </div>
-    <div id="docs-result" style="margin-top:12px"></div>
-  </section>
-
-  <!-- ========== 检索 ========== -->
-  <section class="card panel" id="panel-search" hidden>
-    <div class="grid">
-      <div style="grid-column:1/-1">
-        <label>查询语句</label>
-        <textarea id="query" rows="2" placeholder="例如：密码长度不得少于多少位？">产品交付后的保修期是多久？</textarea>
-      </div>
-      <div>
-        <label>检索档位 profile（读自 /v1/profiles）</label>
-        <select id="profile"><option value="hybrid_rerank">hybrid_rerank</option></select>
-      </div>
-      <div>
-        <label>召回条数 top_k</label>
-        <input id="top-k" type="number" value="10" min="1" max="100" />
-      </div>
-      <div>
-        <label>上下文预算 max_context_tokens</label>
-        <input id="max-tokens" type="number" value="8000" min="256" step="256" />
-      </div>
-      <div class="row">
-        <button id="btn-search" style="flex:1">检索</button>
-        <button class="ghost" id="btn-profiles">刷新档位</button>
-      </div>
-      <div>
-        <label>访问主体 principal（可选；逗号分隔 <span class="mono">type:id</span>，如 <span class="mono">user:alice,group:eng</span>）</label>
-        <input id="principal" spellcheck="false" placeholder="留空 = 不做 ACL 过滤" />
-      </div>
-      <div>
-        <label><input type="checkbox" id="graph-enabled" /> 启用 Graph 通道（graph_enabled）</label>
-      </div>
-      <p class="foot" style="margin:8px 0 0">提示：<span class="mono">exact_lookup</span> 走结构化精确过滤，<span class="mono">graph_global</span> 走 GraphRAG（需该库摄入时开过 <span class="mono">--graph</span>，且上面勾选启用）。</p>
-    </div>
-    <div id="search-result" style="margin-top:16px"></div>
-  </section>
-
-  <!-- ========== 接入 Agent ========== -->
-  <section class="card panel" id="panel-access" hidden>
-    <p class="hint" style="margin:0 0 14px">
-      这里生成的东西是给 <strong>agent 客户端</strong>用的：填服务地址 + 接入码，它就能把这个知识库当自己的 RAG 用。
-      接入码只能用一次、10 分钟内有效；兑换出的令牌可以长期使用，也能在这里随时吊销。
-    </p>
-
-    <div class="grid">
-      <div>
-        <label>底座服务地址（agent 那边就填这个）</label>
-        <input id="acc-base" value="http://127.0.0.1:8082" spellcheck="false" />
-      </div>
-      <div>
-        <label>租户 tenant</label>
-        <input id="acc-tenant" value="acme" spellcheck="false" />
-      </div>
-      <div>
-        <label>知识库 kb</label>
-        <input id="acc-kb" value="demo" spellcheck="false" />
-      </div>
-      <div class="row">
-        <button id="btn-pairing" style="flex:1">生成接入码</button>
-        <button class="ghost" id="btn-acc-health" style="flex:1">检测连接</button>
-        <button class="ghost" id="btn-keys">刷新令牌</button>
-      </div>
-      <div id="acc-health" class="hint" style="margin:8px 0 0"></div>
-    </div>
-
-    <div id="pairing-box" hidden style="margin-top:14px">
-      <label>接入码（复制给 agent，10 分钟内有效，用一次即失效）</label>
-      <div class="row" style="align-items:center">
-        <div id="pairing-code" class="mono"
-             style="font-size:22px;letter-spacing:2px;padding:10px 16px;border:1px dashed var(--line);border-radius:10px;flex:1;text-align:center"></div>
-        <button class="ghost" id="btn-copy-code">复制</button>
-      </div>
-      <p class="hint" id="pairing-hint" style="margin:8px 0 0"></p>
-    </div>
-
-    <div style="margin-top:18px">
-      <label>已签发的令牌（只显示前缀，明文仅在兑换时返回一次）</label>
-      <div id="keys-list" class="hint">点「刷新令牌」查看</div>
-    </div>
-
-    <div style="margin-top:18px">
-      <label>给 agent 的配置（复制即用）</label>
-      <pre id="agent-config" class="mono"
-           style="background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:auto;font-size:12.5px;margin:0"></pre>
-      <div class="row" style="margin-top:8px">
-        <button class="ghost" id="btn-copy-config" style="flex:1">复制配置</button>
-        <span class="hint" id="config-token-note" style="flex:2;margin:0"></span>
-      </div>
-    </div>
-
-    <div style="margin-top:18px">
-      <label>Agent 视角预览 —— 这就是 agent 调用后拿到的内容</label>
-      <div class="row">
-        <input id="acc-query" placeholder="例如：密码长度要求是多少位" spellcheck="false"
-               value="密码长度要求是多少位" style="flex:3" />
-        <button id="btn-preview" style="flex:1">模拟调用</button>
-      </div>
-      <p class="hint" style="margin:8px 0 0">
-        没有令牌时本机仍可预览（控制台在本机，属管理员视角）；跨机访问一律需要令牌。
-      </p>
-    </div>
-    <div id="preview-result" style="margin-top:12px"></div>
-  </section>
-
-  <p class="foot">Knowledge Fabric · 默认 evidence-only：只给证据与引用，由上层 agent 的 LLM 组织答案</p>
+  </div>
 </div>
+
+<div id="toast-host"></div>
 
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
 const LS = "kf.console.";
 
+/* ============================================================
+   基础工具
+   ============================================================ */
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (m) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+}
+const esc = escapeHtml;   // 接入面板里用的是短名
+
+/** 顶部右侧轻提示。替代 alert()：不阻塞、不打断输入。
+ *  kind: ok | warn | err | (默认信息) */
+function toast(msg, kind = "", ttl = 4200) {
+  const host = $("toast-host");
+  const el = document.createElement("div");
+  el.className = "toast " + kind;
+  el.innerHTML = `<div>${escapeHtml(String(msg))}</div>`;
+  host.appendChild(el);
+  const kill = () => { el.classList.add("leaving"); setTimeout(() => el.remove(), 200); };
+  setTimeout(kill, ttl);
+  el.addEventListener("click", kill);
+}
+
+/** 按钮忙碌态：禁用 + 内嵌转圈。宽度不跳（保留原文案）。
+ *  传 busy=false 恢复。 */
+function setBusy(btn, busy, label) {
+  if (!btn) return;
+  if (busy) {
+    if (!btn.dataset.label) btn.dataset.label = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spin"></span><span>${escapeHtml(label || "处理中…")}</span>`;
+  } else {
+    btn.disabled = false;
+    if (btn.dataset.label) { btn.innerHTML = btn.dataset.label; delete btn.dataset.label; }
+  }
+}
+
 /* ---------- 记忆地址与租户/库 ---------- */
 ["base-ingest","base-retrieve","tenant","kb"].forEach((k) => {
+  const el = $(k);
+  if (!el) return;
   const saved = localStorage.getItem(LS + k);
-  if (saved) $(k).value = saved;
-  $(k).addEventListener("change", () => {
-    localStorage.setItem(LS + k, $(k).value.trim());
+  if (saved) el.value = saved;
+  el.addEventListener("change", () => {
+    localStorage.setItem(LS + k, el.value.trim());
     if (k.startsWith("base")) checkHealth();
+    // 全局设置一变，接入面板的默认值跟着走（否则会指着旧服务/旧库）
+    syncAccessDefaults();
   });
 });
 
-const baseIngest   = () => $("base-ingest").value.trim().replace(/\/+$/, "");
-const baseRetrieve = () => $("base-retrieve").value.trim().replace(/\/+$/, "");
+const baseIngest   = () => ($("base-ingest")?.value || "").trim().replace(/\/+$/, "");
+const baseRetrieve = () => ($("base-retrieve")?.value || "").trim().replace(/\/+$/, "");
 
 async function req(base, path, opts) {
+  if (!base) throw new Error(`服务地址为空（${path}）。请在页面底部「服务地址」里填写`);
   const res = await fetch(base + path, opts);
   const text = await res.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch (e) { data = { raw: text }; }
-  if (!res.ok) throw new Error(`HTTP ${res.status} ${path} :: ${(data && (data.detail || data.raw)) || text}`);
+  if (!res.ok) {
+    const detail = (data && (data.detail || data.raw)) || text;
+    throw new Error(`HTTP ${res.status} ${path}${detail ? " :: " + detail : ""}`);
+  }
   return data;
 }
 
-/* ---------- 连接检测 ---------- */
-async function checkHealth() {
+/* ============================================================
+   页面切换
+   ============================================================ */
+const PAGES = {
+  ingest:   ["摄入文档", "上传 PDF / Markdown，走完整流水线后即可检索"],
+  docs:     ["文档库",   "查看每个文档的版本与活跃块数"],
+  search:   ["检索问答", "只返回证据与可核实的字符级引用"],
+  access:   ["接入 Agent", "把知识库接到外部 agent 上"],
+  settings: ["服务设置", "后端服务地址与当前生效的配置"],
+};
+
+document.querySelectorAll(".tab").forEach((tab) => {
+  tab.onclick = () => {
+    const name = tab.dataset.tab;
+    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tab));
+    ["ingest","docs","search","access","settings"].forEach((n) => {
+      const p = $("panel-" + n);
+      if (p) p.hidden = (n !== name);
+    });
+    const meta = PAGES[name] || ["", ""];
+    $("page-title").textContent = meta[0];
+    $("page-sub").textContent = meta[1];
+    if (name === "docs") loadDocs();
+    if (name === "access") { renderAgentConfig(); loadKeys(); }
+    if (name === "search") loadProfiles();
+    if (name === "settings") loadSettingsDetail();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+});
+
+/* ============================================================
+   服务设置页：地址检测 + 当前生效配置
+   ============================================================ */
+function loadSettingsDetail() {
+  const box = $("settings-detail");
+  if (!box) return;
+  box.innerHTML = `<div class="empty"><span class="spin"></span> 读取中…</div>`;
+  Promise.all([
+    fetch(baseRetrieve() + "/health", { cache: "no-store" }).then((r) => r.json()).catch(() => null),
+    fetch(baseIngest() + "/health", { cache: "no-store" }).then((r) => r.json()).catch(() => null),
+  ]).then(([ret, ing]) => {
+    const rk = ((ret || {}).reranker || {});
+    const ad = rk.adaptive || {}, lo = rk.local || {};
+    const em = (ret || {}).embed || {};
+    const au = (ret || {}).auth || {};
+    const ie = (ing || {}).embed || {};
+    box.innerHTML = `<table><tbody>
+      <tr><th style="width:150px">检索服务</th><td>${ret
+        ? `<span class="chip ok">已连接</span>`
+        : `<span class="chip err">未连接</span> <span class="mono">${esc(baseRetrieve())}</span>`}</td></tr>
+      <tr><th>摄入服务</th><td>${ing
+        ? `<span class="chip ok">已连接</span>`
+        : `<span class="chip err">未连接</span> <span class="mono">${esc(baseIngest())}</span>`}</td></tr>
+      <tr><th>嵌入模型</th><td class="mono">${
+        em.model ? `${esc(em.model)} · ${esc(String(em.device))}` : "—"}</td></tr>
+      <tr><th>重排模型</th><td class="mono">${
+        lo.model ? `${esc(lo.model)} · ${esc(String(lo.device))} · ${esc(String(lo.dtype || ""))}`
+                 : (lo.load_error ? `<span class="chip err">加载失败</span> ${esc(String(lo.load_error))}` : "未配置")}</td></tr>
+      <tr><th>显存档位</th><td>${
+        ad.name ? `<span class="chip">${esc(ad.name)}</span> 重排窗口 ${ad.rerank_top_n} · 最大长度 ${ad.max_length}
+                   <span class="hint">（${esc(String(ad.reason || ""))}）</span>` : "—"}</td></tr>
+      <tr><th>鉴权</th><td>required=<b>${au.required}</b> · mode=${esc(String(au.mode || "—"))}
+        ${au.provisioned ? ' · <span class="chip ok">已签发过令牌</span>' : ' · <span class="chip warn">尚未签发</span>'}</td></tr>
+      <tr><th>摄入端嵌入</th><td class="mono">${
+        ie.model ? `${esc(ie.model)} · ${esc(String(ie.device))}` : "—"}</td></tr>
+    </tbody></table>`;
+  });
+}
+const _btnRefreshSettings = $("btn-refresh-settings");
+if (_btnRefreshSettings) _btnRefreshSettings.onclick = loadSettingsDetail;
+
+const _btnSettingsCheck = $("btn-settings-check");
+if (_btnSettingsCheck) _btnSettingsCheck.onclick = async () => {
+  setBusy(_btnSettingsCheck, true, "检测中…");
+  $("settings-status").textContent = "";
+  await checkHealth(true);
+  loadSettingsDetail();
+  setBusy(_btnSettingsCheck, false);
+};
+
+/* ============================================================
+   连接检测
+   原来只有标题旁一个小圆点，失败也看不出原因。现在：
+     · 侧边栏每项显示 已连接/未连接/…；
+     · 点击「检测连接」时在三处给结果（侧边栏 + toast + 详情）。
+   ============================================================ */
+async function checkHealth(verbose = false) {
+  let okCount = 0;
   for (const name of ["ingest", "retrieve"]) {
     const dot = $("dot-" + name), lbl = $("lbl-" + name);
     const base = name === "ingest" ? baseIngest() : baseRetrieve();
+    if (dot) dot.className = "dot busy";
+    if (lbl) lbl.textContent = "…";
     try {
+      if (!base) throw new Error("地址为空");
       const res = await fetch(base + "/health", { cache: "no-store" });
       if (!res.ok) throw new Error("HTTP " + res.status);
-      dot.className = "dot ok"; lbl.textContent = "已连接";
+      const h = await res.json();
+      if (dot) dot.className = "dot ok";
+      if (lbl) lbl.textContent = "已连接";
+      okCount++;
+      if (name === "retrieve") renderConnDetail(h, base);
     } catch (e) {
-      dot.className = "dot err"; lbl.textContent = "未连接";
+      if (dot) dot.className = "dot err";
+      if (lbl) lbl.textContent = "未连接";
+      if (name === "retrieve") renderConnDetail(null, base, e);
     }
   }
+  if (verbose) {
+    if (okCount === 2) toast("两个服务都连通", "ok");
+    else toast(`有服务未连通（${okCount}/2）。检查服务是否启动、地址是否正确`, "err");
+  }
 }
-$("btn-check").onclick = checkHealth;
 
-/* ==================================================================
+/** 检索服务的细节：鉴权 / 重排 / 嵌入。这是排查「为什么检索没结果」的第一现场。 */
+function renderConnDetail(h, base, err) {
+  const box = $("acc-health");
+  if (!box) return;
+  if (err) {
+    box.innerHTML =
+      `<span class="chip err">连不上</span> <span class="mono">${esc(base || "(地址为空)")}</span><br>` +
+      `原因：${esc(String(err.message || err))}<br>` +
+      `依次检查：① 服务是否在跑（运行 <code>scripts\\start.cmd</code>）` +
+      `　② 地址是否正确　③ 是否把 127.0.0.1 的流量交给了代理`;
+    return;
+  }
+  const auth = h.auth || {};
+  const rk = (h.reranker || {}).local || {};
+  const ad = (h.reranker || {}).adaptive || {};
+  const em = h.embed || {};
+  box.innerHTML =
+    `<span class="chip ok">连通</span> <span class="mono">${esc(base)}</span><br>` +
+    `鉴权 required=<b>${auth.required}</b>（mode=${esc(String(auth.mode || "—"))}）　` +
+    `嵌入 <b>${esc(String(em.device || "—"))}</b>　` +
+    `重排 <b>${rk.ready ? "就绪" : "未就绪"}</b>` +
+    (rk.device ? `（${esc(String(rk.device))} · ${esc(String(ad.name || "—"))} 档）` : "") +
+    (rk.load_error ? `<br><span class="chip err">重排加载失败</span> ${esc(String(rk.load_error))}` : "");
+}
+
+$("btn-check").onclick = async () => {
+  const btn = $("btn-check");
+  setBusy(btn, true, "检测中…");
+  await checkHealth(true);
+  setBusy(btn, false);
+};
+
+/* ============================================================
    接入 Agent：接入码 → 令牌 → 配置 → 视角预览
    设计要点：
-     · 接入码由底座**签发**，只允许本机（控制台就在本机）；
+     · 接入码由底座签发，只允许本机（控制台就在本机）；
      · 令牌明文只在兑换那一刻返回，这里只留在内存变量里用于预览，
        不写 localStorage（控制台是 file:// 打开的，本地存储并非保险箱）；
-     · 预览走的是和 agent 完全相同的接口，看到什么 agent 就拿到什么。
-   ================================================================== */
-let ACC_TOKEN = "";          // 仅内存，用于"Agent 视角预览"
+     · 预览走的是和 agent 完全相同的接口 —— 看到什么 agent 就拿到什么。
+   ============================================================ */
+let ACC_TOKEN = "";
 
-const accBase    = () => $("acc-base").value.trim().replace(/\/+$/, "");
-const accTenant  = () => $("acc-tenant").value.trim();
-const accKb      = () => $("acc-kb").value.trim();
+const accBase   = () => ($("acc-base")?.value || "").trim().replace(/\/+$/, "");
+const accTenant = () => ($("acc-tenant")?.value || "").trim();
+const accKb     = () => ($("acc-kb")?.value || "").trim();
 
 async function accReq(path, opts) {
   const headers = Object.assign({}, (opts && opts.headers) || {});
@@ -451,54 +1028,32 @@ async function accReq(path, opts) {
   return req(accBase(), path, Object.assign({}, opts, { headers }));
 }
 
-/* ---------- 检测连接 ----------
-   把"到底是服务没起、地址填错、还是被代理挡了"一次说清楚。
-   否则用户只看到"生成接入码失败"，无从判断。 */
-$("btn-acc-health").onclick = async () => {
-  const box = $("acc-health");
-  const base = accBase();
-  box.textContent = `正在检测 ${base || "(地址为空)"} …`;
-  if (!base) {
-    box.innerHTML = `<span style="color:#f88">服务地址为空</span>：请在上面填 http://127.0.0.1:8082`;
-    return;
-  }
-  const t0 = performance.now();
-  try {
-    const res = await fetch(base + "/health", { cache: "no-store" });
-    const ms = Math.round(performance.now() - t0);
-    if (!res.ok) {
-      box.innerHTML = `<span style="color:#f88">HTTP ${res.status}</span> · ${esc(base)} · ${ms}ms`;
-      return;
-    }
-    const h = await res.json();
-    const auth = h.auth || {};
-    const rk = (h.reranker || {}).local || {};
-    box.innerHTML =
-      `<span style="color:#34d399">连通</span> · ${esc(base)} · ${ms}ms<br>` +
-      `鉴权：required=<b class="mono">${auth.required}</b> ` +
-      `mode=${esc(String(auth.mode || "—"))} ` +
-      `provisioned=${auth.provisioned}<br>` +
-      `重排：ready=<b class="mono">${rk.ready}</b> device=${esc(String(rk.device || "—"))}` +
-      (rk.load_error ? `<br><span style="color:#f88">重排加载失败：${esc(String(rk.load_error))}</span>` : "");
-  } catch (e) {
-    // 浏览器在"服务没起"和"被 CORS 拦"时都报 Failed to fetch，只能提示排查方向
-    box.innerHTML =
-      `<span style="color:#f88">连不上</span> · ${esc(base)}<br>` +
-      `原因：${esc(String(e && e.message ? e.message : e))}<br>` +
-      `依次检查：① 服务是否在跑（scripts\\start.cmd）　` +
-      `② 地址是否 http://127.0.0.1:8082　` +
-      `③ 是否把 127.0.0.1 的流量交给了代理`;
-  }
-};
+/** 接入面板的默认值跟随顶部全局租户/库 —— 省得两处填不一致。
+ *
+ *  规则（简单可预期）：
+ *    · 全局「租户/库/服务地址」变了 → 接入面板跟着变（接入面板填的是
+ *      "agent 要用的地址与库"，绝大多数时候就是控制台正在看的那个）；
+ *    · 直接在接入面板里改 → 只影响接入面板，不改全局。
+ *
+ *  之前是"只在为空时填一次"：用户把服务地址改成非默认端口后，接入面板
+ *  仍指着旧地址，于是预览和生成接入码会连到错的地方。
+ */
+function syncAccessDefaults() {
+  if (!$("acc-base") || !$("acc-tenant") || !$("acc-kb")) return;
+  $("acc-base").value = baseRetrieve() || "http://127.0.0.1:8082";
+  $("acc-tenant").value = $("tenant").value.trim();
+  $("acc-kb").value = $("kb").value.trim();
+  renderAgentConfig();
+}
 
 /* ---------- 生成接入码 ----------
-   🔴 关键：这里**绝不兑换**这张码。
+   🔴 这里**绝不兑换**这张码。
    接入码是"一次性、给人抄"的凭证；控制台如果顺手兑换掉，
-   用户抄到手的码在生成那一刻就已失效（真机踩过：agent 报"该接入码已被使用"）。
-   控制台自己预览用的令牌走 /v1/auth/token 直签，与接入码完全分开。 */
+   用户抄到手的码在生成那一刻就失效了（真机踩过：agent 报"该接入码已被使用"）。
+   控制台自己预览用的令牌走 /v1/auth/token 直签，与接入码彻底分开。 */
 $("btn-pairing").onclick = async () => {
   const btn = $("btn-pairing");
-  btn.disabled = true; btn.textContent = "生成中…";
+  setBusy(btn, true, "生成中…");
   try {
     const data = await accReq("/v1/auth/pairing", {
       method: "POST",
@@ -506,21 +1061,30 @@ $("btn-pairing").onclick = async () => {
       body: JSON.stringify({ tenant: accTenant(), name: "agent" }),
     });
     $("pairing-code").textContent = data.code;
+    $("pairing-code").className = "val";
     $("pairing-box").hidden = false;
     $("pairing-hint").innerHTML =
       `租户 <b>${esc(data.tenant_id)}</b> · ${data.ttl_sec} 秒内有效 · <b>只能用一次</b>。` +
       `把它填进 agent 的「接入码」输入框即可（本页面<strong>不会</strong>消耗它）。`;
     renderAgentConfig();
     loadKeys();
+    toast(`接入码已生成：${data.code}`, "ok", 6000);
   } catch (e) {
     $("pairing-box").hidden = false;
-    $("pairing-code").textContent = "失败";
-    // 把目标地址一起打出来：否则只看 "HTTP 403" 没法判断是地址错还是被拦
-    $("pairing-hint").textContent =
-      `${e.message}　（请求目标 ${accBase() || "(地址为空)"}/v1/auth/pairing）`;
+    $("pairing-code").textContent = "生成失败";
+    $("pairing-code").className = "val bad";
+    $("pairing-hint").innerHTML =
+      `${esc(e.message)}<br><span class="hint">请求目标 ${esc(accBase() || "(地址为空)")}/v1/auth/pairing</span>`;
+    toast("生成接入码失败：" + e.message, "err", 7000);
   } finally {
-    btn.disabled = false; btn.textContent = "生成接入码";
+    setBusy(btn, false);
   }
+};
+
+$("btn-copy-code").onclick = () => {
+  const code = $("pairing-code").textContent;
+  if (!code || code === "生成失败") { toast("还没有可复制的接入码", "warn"); return; }
+  copyText(code, "接入码已复制");
 };
 
 /* 预览用的令牌：按需直签（仅本机），与接入码分开 */
@@ -533,57 +1097,75 @@ async function ensurePreviewToken() {
   });
   ACC_TOKEN = data.token || "";
   $("config-token-note").textContent =
-    "预览令牌已签发（仅本机可签，明文只在内存里，不写 localStorage）。";
+    "预览令牌已签发（仅本机可签；明文只在内存里，不写 localStorage）。";
   renderAgentConfig();
   loadKeys();
   return ACC_TOKEN;
 }
 
-$("btn-copy-code").onclick = () => copyText($("pairing-code").textContent);
-
 /* ---------- 令牌列表 ---------- */
 async function loadKeys() {
   const box = $("keys-list");
+  if (!box) return;
   try {
     const data = await accReq("/v1/auth/keys");
     const keys = (data && data.keys) || [];
     if (!keys.length) {
-      box.innerHTML = `<span class="hint">还没有签发过令牌。点「生成接入码」开始。</span>`;
+      box.innerHTML = `<div class="empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+          <rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        还没有签发过令牌。点「生成接入码」开始。</div>`;
       return;
     }
-    box.innerHTML = keys.map((k) => `
-      <div class="row" style="align-items:center;padding:7px 0;border-bottom:1px solid var(--line)">
-        <span class="mono" style="flex:2">${esc(k.prefix)}…</span>
-        <span class="hint" style="flex:1;margin:0">${esc(k.tenant_id)} · ${esc(k.name || "agent")}</span>
-        <span class="hint" style="flex:2;margin:0">最近使用 ${k.last_used_at ? k.last_used_at.slice(0, 19).replace("T", " ") : "—"}</span>
-        ${k.revoked
-          ? `<span class="hint" style="flex:1;margin:0;color:#f88">已吊销</span>`
-          : `<button class="ghost" data-revoke="${esc(k.id)}" style="flex:1">吊销</button>`}
-      </div>`).join("");
+    box.innerHTML = `<table><thead><tr>
+        <th>前缀</th><th>租户</th><th>名称</th><th>最近使用</th><th style="width:80px"></th>
+      </tr></thead><tbody>
+      ${keys.map((k) => `<tr>
+        <td class="mono">${esc(k.prefix)}…</td>
+        <td>${esc(k.tenant_id)}</td>
+        <td>${esc(k.name || "agent")}</td>
+        <td class="mono">${k.last_used_at ? esc(k.last_used_at.slice(0, 19).replace("T", " ")) : "—"}</td>
+        <td>${k.revoked
+          ? `<span class="chip err">已吊销</span>`
+          : `<button class="danger sm" data-revoke="${esc(k.id)}">吊销</button>`}</td>
+      </tr>`).join("")}</tbody></table>`;
     box.querySelectorAll("[data-revoke]").forEach((b) => {
       b.onclick = async () => {
         if (!confirm("吊销后该令牌立即失效，agent 会开始报 401。确定？")) return;
+        setBusy(b, true, "…");
         try {
           await accReq("/v1/auth/revoke", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ id: b.dataset.revoke }),
           });
+          toast("令牌已吊销", "ok");
           loadKeys();
-        } catch (e) { alert("吊销失败：" + e.message); }
+        } catch (e) {
+          setBusy(b, false);
+          toast("吊销失败：" + e.message, "err");
+        }
       };
     });
   } catch (e) {
-    box.textContent = "读取令牌失败：" + e.message;
+    box.innerHTML = `<div class="note err"><div>读取令牌失败：${esc(e.message)}</div></div>`;
   }
 }
-$("btn-keys").onclick = loadKeys;
+$("btn-keys").onclick = async () => {
+  const btn = $("btn-keys");
+  setBusy(btn, true, "刷新中…");
+  await loadKeys();
+  setBusy(btn, false);
+};
 
 /* ---------- 给 agent 的配置 ---------- */
 function renderAgentConfig() {
+  const el = $("agent-config");
+  if (!el) return;
   const cfg = {
     kb_mode: "remote",
     kb_base_url: accBase(),
+    kb_ingest_url: baseIngest() || "http://127.0.0.1:8083",
     kb_tenant: accTenant(),
     kb_id: accKb(),
     kb_profile: "hybrid_rerank",
@@ -592,44 +1174,61 @@ function renderAgentConfig() {
     kb_fallback_local: false,
     kb_token: ACC_TOKEN || "<粘贴接入码兑换得到的令牌>",
   };
-  $("agent-config").textContent = Object.entries(cfg)
-    .map(([k, v]) => `${k}=${v}`).join("\n");
+  el.textContent = Object.entries(cfg).map(([k, v]) => `${k}=${v}`).join("\n");
 }
 ["acc-base","acc-tenant","acc-kb"].forEach((id) => {
-  $(id).addEventListener("input", renderAgentConfig);
+  const el = $(id);
+  if (el) el.addEventListener("input", renderAgentConfig);
 });
-$("btn-copy-config").onclick = () => copyText($("agent-config").textContent);
+$("btn-copy-config").onclick = () => copyText($("agent-config").textContent, "配置已复制");
 
-/* 接入面板默认跟随顶部的服务地址/租户/库——省得两处填不一致 */
-function syncAccessDefaults() {
-  if (!$("acc-base").value.trim()) $("acc-base").value = baseRetrieve();
-  if (!$("acc-tenant").value.trim()) $("acc-tenant").value = $("tenant").value.trim();
-  if (!$("acc-kb").value.trim()) $("acc-kb").value = $("kb").value.trim();
-  renderAgentConfig();
-}
-syncAccessDefaults();
+/* ---------- 检测连接（接入页）---------- */
+$("btn-acc-health").onclick = async () => {
+  const btn = $("btn-acc-health");
+  setBusy(btn, true, "检测中…");
+  const base = accBase();
+  const box = $("acc-health");
+  if (!base) {
+    box.innerHTML = `<span class="chip err">地址为空</span> 请先填 http://127.0.0.1:8082`;
+    setBusy(btn, false);
+    return;
+  }
+  const t0 = performance.now();
+  try {
+    const res = await fetch(base + "/health", { cache: "no-store" });
+    const ms = Math.round(performance.now() - t0);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const h = await res.json();
+    renderConnDetail({ ...h }, `${base} · ${ms}ms`);
+    toast(`底座连通（${ms} ms）`, "ok");
+  } catch (e) {
+    renderConnDetail(null, base, e);
+    toast("连不上底座：" + e.message, "err", 7000);
+  } finally {
+    setBusy(btn, false);
+  }
+};
 
 /* ---------- Agent 视角预览 ---------- */
 $("btn-preview").onclick = async () => {
   const btn = $("btn-preview");
-  btn.disabled = true; btn.textContent = "调用中…";
   const box = $("preview-result");
-  box.innerHTML = "";
+  const q = $("acc-query").value.trim();
+  if (!q) { toast("请输入要模拟的问题", "warn"); return; }
+  setBusy(btn, true, "调用中…");
+  box.innerHTML = `<div class="empty"><span class="spin"></span> 调用中…</div>`;
   try {
     await ensurePreviewToken();
     const data = await accReq("/v1/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query: $("acc-query").value.trim(),
-        tenant: accTenant(), kb: accKb(), top_k: 5,
-      }),
+      body: JSON.stringify({ query: q, tenant: accTenant(), kb: accKb(), top_k: 5 }),
     });
     box.innerHTML = renderAgentView(data);
   } catch (e) {
-    box.innerHTML = `<div class="ev"><strong>调用失败</strong><div class="hint">${esc(e.message)}</div></div>`;
+    box.innerHTML = `<div class="note err"><div><b>调用失败</b><br>${esc(e.message)}</div></div>`;
   } finally {
-    btn.disabled = false; btn.textContent = "模拟调用";
+    setBusy(btn, false);
   }
 };
 
@@ -638,66 +1237,43 @@ function renderAgentView(data) {
   const ev = data.evidence || [];
   const refused = !!tr.refused;
   const head = `
-    <div class="row" style="align-items:center;margin-bottom:10px">
-      <span class="pill" style="flex:0 0 auto"><i class="dot ${refused ? "err" : "ok"}"></i>
-        refused = <b class="mono">${refused}</b></span>
-      <span class="hint" style="margin:0">可达分 <b class="mono">${tr.answerability ?? "N/A"}</b>
-        · 阈值 <b class="mono">${tr.threshold_value ?? "—"}</b>
+    <div class="row" style="margin-bottom:11px">
+      <span class="chip ${refused ? "err" : "ok"}">refused = ${refused}</span>
+      <span class="hint" style="margin:0">
+        可达分 <b>${tr.answerability ?? "N/A"}</b>
+        · 阈值 <b>${tr.threshold_value ?? "—"}</b>
         （${esc(String(tr.threshold_source || "—"))}）
-        · 档位 <b class="mono">${esc(String(tr.rerank_tier || "—"))}</b></span>
+        · 档位 <b>${esc(String(tr.rerank_tier || "—"))}</b>
+      </span>
     </div>`;
   if (refused) {
-    return head + `<div class="ev"><strong>底座判定：拒答</strong>
-      <div class="hint">${esc(String(tr.refuse_reason || "依据不足"))}</div>
-      <div class="hint">agent 拿到 <span class="mono">refused=true</span> 与空证据后，
-        <strong>必须如实告知用户"知识库里没有依据"</strong>，不能凭常识补全。</div></div>`;
+    return head + `<div class="note warn"><div>
+      <b>底座判定：拒答</b><br>
+      ${esc(String(data.reason || tr.refuse_reason || "依据不足"))}<br>
+      <span class="hint">agent 拿到 <code>refused=true</code> 与空证据后，<b>必须如实告知用户"知识库里没有依据"</b>，
+      不能凭常识补全。</span></div></div>`;
   }
   const cards = ev.map((e, i) => {
-    const range = Array.isArray(e.char_range) ? `[${e.char_range[0]}-${e.char_range[1]}]` : "—";
+    const range = Array.isArray(e.char_range) ? `[${e.char_range[0]}–${e.char_range[1]}]` : "—";
     const text = String(e.content || "");
     return `<div class="ev">
-      <div class="row" style="align-items:center;margin-bottom:6px">
-        <strong style="flex:0 0 auto">#${i + 1}</strong>
-        <span class="mono" style="flex:2">${esc(String(e.source_uri || e.source || "—"))}
-          · p${e.page ?? "—"} · ${esc(range)}</span>
-        <span class="hint" style="flex:0 0 auto;margin:0">score ${e.score ?? "—"}</span>
+      <div class="ev-h">
+        <span class="chip ok">#${i + 1}</span>
+        <span class="chip violet mono">${esc(String(e.source_uri || e.source || "—"))}</span>
+        <span class="chip">p${e.page ?? "—"} · ${esc(range)}</span>
+        <span class="chip">score ${e.score ?? "—"}</span>
       </div>
-      <div class="hint" style="margin:0 0 6px">${esc(String(e.chunk_id || ""))}
-        ${e.section_path ? " · " + esc([].concat(e.section_path).join(" / ")) : ""}</div>
-      <div style="font-size:12.5px;max-height:150px;overflow:auto;white-space:pre-wrap">${esc(text.slice(0, 600))}</div>
+      <div class="ev-b"><pre>${esc(text.slice(0, 900))}</pre></div>
+      <div class="ev-m">${esc(String(e.chunk_id || ""))}${
+        e.section_path ? " · " + esc([].concat(e.section_path).join(" / ")) : ""}</div>
     </div>`;
   }).join("");
-  return head + (cards || `<div class="ev"><div class="hint">没有证据</div></div>`);
+  return head + (cards || `<div class="empty">没有证据</div>`);
 }
 
-/* ---------- 小工具 ---------- */
-function esc(s) {
-  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
-async function copyText(text) {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch (e) {
-    // file:// 下 clipboard API 可能被拒，退回 textarea 选中法
-    const ta = document.createElement("textarea");
-    ta.value = text; document.body.appendChild(ta); ta.select();
-    document.execCommand("copy"); document.body.removeChild(ta);
-  }
-}
-
-/* ---------- 标签页 ---------- */
-document.querySelectorAll(".tab").forEach((tab) => {
-  tab.onclick = () => {
-    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tab));
-    ["ingest","docs","search","access"].forEach((n) => { $("panel-" + n).hidden = (n !== tab.dataset.tab); });
-    if (tab.dataset.tab === "docs") loadDocs();
-    if (tab.dataset.tab === "access") { renderAgentConfig(); loadKeys(); }
-    if (tab.dataset.tab === "search") loadProfiles();
-  };
-});
-
-/* ---------- 摄入 ---------- */
+/* ============================================================
+   摄入（单文件）
+   ============================================================ */
 const drop = $("drop");
 drop.onclick = () => $("file").click();
 ["dragenter","dragover"].forEach((ev) => drop.addEventListener(ev, (e) => {
@@ -714,9 +1290,11 @@ $("file").onchange = showFile;
 function showFile() {
   const f = $("file").files[0];
   $("dropText").innerHTML = f
-    ? `已选择 <strong>${escapeHtml(f.name)}</strong> · ${(f.size/1024).toFixed(1)} KB`
-    : "把 PDF 拖到这里，或 <strong>点击选择文件</strong>";
+    ? `<div class="fname">${escapeHtml(f.name)}</div><div class="hint">${(f.size/1024).toFixed(1)} KB · 点击可重新选择</div>`
+    : "把文件拖到这里，或 <strong>点击选择</strong>";
   if (f && !$("doc-id").value) $("doc-id").value = f.name.replace(/\.[^.]+$/, "");
+  // 没选文件时按钮是禁用的——之前点了只弹 alert，看着像"没反应"
+  $("btn-ingest").disabled = !f;
 }
 
 const STAGES = ["解析 parse","清洗 clean","切片 chunk","增强 enrich","嵌入 embed","索引 index"];
@@ -724,17 +1302,18 @@ function renderFlow() {
   const dry = $("dry-run").checked;
   $("flow").innerHTML = STAGES
     .filter((s) => !(dry && (s.includes("embed") || s.includes("index"))))
-    .map((s) => `<span>${s}</span>`).join("");
+    .map((s) => `<span class="chip">${s}</span>`).join("");
 }
 $("dry-run").onchange = renderFlow;
 renderFlow();
+showFile();
 
 $("btn-ingest").onclick = async () => {
   const f = $("file").files[0];
-  if (!f) { alert("请先选择要摄入的文档（PDF / Markdown）"); return; }
+  if (!f) { toast("请先选择要摄入的文档（PDF / Markdown）", "warn"); return; }
   const btn = $("btn-ingest");
-  btn.disabled = true;
-  $("ingest-status").innerHTML = '<span class="busy"></span> 摄入中…（首次启动会拉取模型权重，可能较慢）';
+  setBusy(btn, true, "摄入中…");
+  $("ingest-status").innerHTML = '<span class="spin"></span> 摄入中（首次会拉模型，可能较慢）';
   $("ingest-result").innerHTML = "";
   try {
     const fd = new FormData();
@@ -753,13 +1332,16 @@ $("btn-ingest").onclick = async () => {
     const data = await req(baseIngest(), "/v1/ingest", { method: "POST", body: fd });
     renderIngest(data);
     $("ingest-status").textContent = "";
+    const errs = (data.errors || []).length;
+    toast(errs ? `摄入完成，但有 ${errs} 条错误` : "摄入完成", errs ? "warn" : "ok");
   } catch (e) {
     $("ingest-status").textContent = "";
     $("ingest-result").innerHTML =
-      `<div class="notes err">摄入请求失败：${escapeHtml(e.message)}<br>
-       请确认 kf-ingest 已启动（默认 8083）：<span class="mono">python -m uvicorn kf_ingest.app:app --port 8083</span></div>`;
+      `<div class="note err"><div>摄入请求失败：${escapeHtml(e.message)}<br>
+       请确认 kf-ingest 已启动（默认 8083）：<code>python -m uvicorn kf_ingest.app:app --port 8083</code></div></div>`;
+    toast("摄入失败：" + e.message, "err", 6000);
   } finally {
-    btn.disabled = false;
+    setBusy(btn, false);
   }
 };
 
@@ -774,43 +1356,49 @@ function renderIngest(d) {
       ${card(cl.removed_blocks || 0, "清洗移除块")}
       ${card(cl.deduped_blocks || 0, "去重块")}
     </div>
-    <div class="meta">文档 <b>${escapeHtml(d.doc_id)}</b> v${d.version} ·
+    <div class="hint" style="margin-top:12px">文档 <b>${escapeHtml(d.doc_id)}</b> v${d.version} ·
       语言 ${d.lang || "—"} · 策略 <span class="chip">${escapeHtml(d.strategy || "—")}</span> ·
-      集合 <span class="mono">${escapeHtml(d.collection || "")}</span>${d.dry_run ? ' · <span class="chip">dry-run 未落库</span>' : ""}</div>`;
+      集合 <span class="mono">${escapeHtml(d.collection || "")}</span>${
+        d.dry_run ? ' · <span class="chip warn">dry-run 未落库</span>' : ""}</div>`;
 
   const cs = st.chunk || {};
   if (cs && Object.keys(cs).length) {
-    html += `<div class="meta">切片：子块 ${cs.children ?? "—"} · 平均 ${cs.avg_child_tokens ?? "—"} token ·
-      最大 ${cs.max_child_tokens ?? "—"} · 原子子块 ${cs.atomic_children ?? "—"} ·
+    html += `<div class="hint" style="margin-top:7px">切片：子块 ${cs.children ?? "—"} ·
+      平均 ${cs.avg_child_tokens ?? "—"} token · 最大 ${cs.max_child_tokens ?? "—"} ·
+      原子子块 ${cs.atomic_children ?? "—"} ·
       路由特征 ${cs.features ? escapeHtml(JSON.stringify(cs.features)) : "—"}</div>`;
   }
   const idx = st.index || {};
-  if (idx && (idx.notes || []).length) {
-    html += `<div class="notes">落库提示：${idx.notes.map(escapeHtml).join("；")}</div>`;
+  if ((idx.notes || []).length) {
+    html += `<div class="note warn" style="margin-top:12px"><div>落库提示：${idx.notes.map(escapeHtml).join("；")}</div></div>`;
   }
-  if ((d.notes || []).length) html += `<div class="notes">${d.notes.map(escapeHtml).join("；")}</div>`;
+  if ((d.notes || []).length) {
+    html += `<div class="note" style="margin-top:12px"><div>${d.notes.map(escapeHtml).join("；")}</div></div>`;
+  }
   if ((d.errors || []).length) {
-    html += `<div class="notes err">错误：${d.errors.map(escapeHtml).join("；")}</div>`;
+    html += `<div class="note err" style="margin-top:12px"><div>错误：${d.errors.map(escapeHtml).join("；")}</div></div>`;
   } else if (!d.dry_run) {
-    html += `<div class="notes" style="border-color:var(--ok);background:rgba(57,217,138,.08);color:#9ef0c4">
-      摄入完成。可切到「检索问答」立即可查（增量写入无需重启服务）。</div>`;
+    html += `<div class="note ok" style="margin-top:12px"><div>
+      摄入完成。切到「检索问答」即可查询（增量写入，无需重启服务）。</div></div>`;
   }
   html += `<details><summary>查看完整摘要 JSON</summary><pre class="mono">${
     escapeHtml(JSON.stringify(d, null, 2))}</pre></details>`;
   $("ingest-result").innerHTML = html;
 }
 
-/* ---------- 目录批量摄入 ---------- */
+/* ============================================================
+   摄入（目录）
+   ============================================================ */
 $("btn-ingest-dir").onclick = async () => {
   const dir = $("dir-path").value.trim();
-  if (!dir) { alert("请填写服务端本机的目录路径"); return; }
+  if (!dir) { toast("请填写服务端本机的目录路径", "warn"); $("dir-path").focus(); return; }
   const btn = $("btn-ingest-dir");
-  btn.disabled = true;
-  $("dir-status").innerHTML = '<span class="busy"></span> 扫描并逐个摄入中…';
+  setBusy(btn, true, "扫描中…");
+  $("dir-status").innerHTML = '<span class="spin"></span> 扫描并逐个摄入中…';
   $("dir-result").innerHTML = "";
   try {
     const payload = {
-      dir: dir,
+      dir,
       tenant: $("tenant").value.trim() || "default",
       kb: $("kb").value.trim() || "default",
       version: parseInt($("version").value || "1", 10),
@@ -831,13 +1419,16 @@ $("btn-ingest-dir").onclick = async () => {
     });
     renderDirIngest(data);
     $("dir-status").textContent = "";
+    toast(`目录摄入完成：成功 ${data.succeeded || 0} / 失败 ${data.failed || 0}`,
+          (data.failed || 0) ? "warn" : "ok");
   } catch (e) {
     $("dir-status").textContent = "";
     $("dir-result").innerHTML =
-      `<div class="notes err">目录摄入失败：${escapeHtml(e.message)}<br>
-       请确认目录存在于<b>服务端本机</b>，且 kf-ingest 已启动（默认 8083）。</div>`;
+      `<div class="note err"><div>目录摄入失败：${escapeHtml(e.message)}<br>
+       请确认目录存在于<b>服务端本机</b>，且 kf-ingest 已启动（默认 8083）。</div></div>`;
+    toast("目录摄入失败：" + e.message, "err", 6000);
   } finally {
-    btn.disabled = false;
+    setBusy(btn, false);
   }
 };
 
@@ -850,37 +1441,40 @@ function renderDirIngest(d) {
       ${stat(d.failed || 0, "失败")}
       ${stat(skipped.length, "跳过(不支持格式)")}
     </div>
-    <div class="meta">目录 <span class="mono">${escapeHtml(d.dir || "")}</span> ·
+    <div class="hint" style="margin-top:12px">目录 <span class="mono">${escapeHtml(d.dir || "")}</span> ·
       租户 ${escapeHtml(d.tenant || "")} / 库 ${escapeHtml(d.kb || "")} ·
-      集合 <span class="mono">${escapeHtml(d.collection || "")}</span>${d.dry_run ? ' · <span class="chip">dry-run 未落库</span>' : ""}</div>`;
+      集合 <span class="mono">${escapeHtml(d.collection || "")}</span>${
+        d.dry_run ? ' · <span class="chip warn">dry-run 未落库</span>' : ""}</div>`;
 
   if (docs.length) {
-    html += `<table><thead><tr><th>文档（doc_id = 文件名）</th><th>格式</th><th>策略</th>
+    html += `<div style="margin-top:12px; overflow:auto"><table><thead><tr>
+      <th>文档（doc_id = 文件名）</th><th>格式</th><th>策略</th>
       <th>父块</th><th>子块</th><th>已索引</th><th>状态</th></tr></thead><tbody>`;
     for (const doc of docs) {
       const p = (doc.stages || {}).parse || {};
       const c = doc.counts || {};
       html += `<tr>
-        <td>${escapeHtml(doc.doc_id)}</td>
+        <td class="mono">${escapeHtml(doc.doc_id)}</td>
         <td class="mono">${escapeHtml(p.scanner || "—")}</td>
         <td><span class="chip">${escapeHtml(doc.strategy || "—")}</span></td>
         <td>${c.parents ?? 0}</td>
         <td>${c.children ?? 0}</td>
         <td>${c.indexed ?? 0}</td>
-        <td>${doc.ok ? "✅" : "❌"}</td>
+        <td>${doc.ok ? '<span class="chip ok">成功</span>' : '<span class="chip err">失败</span>'}</td>
       </tr>`;
     }
-    html += `</tbody></table>`;
+    html += `</tbody></table></div>`;
   } else if (!d.dry_run) {
     html += `<div class="empty">没有摄入任何文档。</div>`;
   }
 
   if (skipped.length) {
-    html += `<div class="notes">跳过 ${skipped.length} 个不支持的格式（当前解析器支持 PDF / Markdown）：
-      <span class="mono">${skipped.map((p) => escapeHtml(p.split(/[\\/]/).pop())).join("、")}</span></div>`;
+    html += `<div class="note warn" style="margin-top:12px"><div>
+      跳过 ${skipped.length} 个不支持的格式（当前只解析 PDF / Markdown）：
+      <span class="mono">${skipped.map((p) => escapeHtml(p.split(/[\\/]/).pop())).join("、")}</span></div></div>`;
   }
   if ((d.notes || []).length) {
-    html += `<div class="notes">${d.notes.map(escapeHtml).join("；")}</div>`;
+    html += `<div class="note" style="margin-top:12px"><div>${d.notes.map(escapeHtml).join("；")}</div></div>`;
   }
   html += `<details><summary>查看完整摘要 JSON</summary><pre class="mono">${
     escapeHtml(JSON.stringify(d, null, 2))}</pre></details>`;
@@ -891,11 +1485,19 @@ function stat(v, k) {
   return `<div class="stat"><b>${v}</b><span>${k}</span></div>`;
 }
 
-/* ---------- 文档库 ---------- */
-$("btn-refresh-docs").onclick = loadDocs;
+/* ============================================================
+   文档库
+   ============================================================ */
+$("btn-refresh-docs").onclick = async () => {
+  const btn = $("btn-refresh-docs");
+  setBusy(btn, true, "刷新中…");
+  await loadDocs();
+  setBusy(btn, false);
+};
+
 async function loadDocs() {
   const box = $("docs-result");
-  box.innerHTML = '<div class="empty"><span class="busy"></span> 读取中…</div>';
+  box.innerHTML = `<div class="empty"><span class="spin"></span> 读取中…</div>`;
   try {
     const q = new URLSearchParams({
       tenant: $("tenant").value.trim() || "default",
@@ -904,33 +1506,39 @@ async function loadDocs() {
     const data = await req(baseIngest(), "/v1/documents?" + q.toString());
     const docs = data.documents || [];
     if (!docs.length) {
-      box.innerHTML = `<div class="empty">暂无文档${(data.notes || []).length
-        ? "：" + escapeHtml(data.notes.join("；")) : "（先上传一份 PDF）"}</div>`;
+      box.innerHTML = `<div class="empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+          <path d="M4 5a2 2 0 0 1 2-2h6l2 2h6a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>
+        <div>暂无文档${(data.notes || []).length ? "：" + escapeHtml(data.notes.join("；")) : "（先到「摄入文档」上传一份）"}</div></div>`;
       return;
     }
-    box.innerHTML = `<table><thead><tr>
+    box.innerHTML = `<div style="overflow:auto"><table><thead><tr>
         <th>doc_id</th><th>库</th><th>标题</th><th>语言</th><th>类型</th>
-        <th>当前版本</th><th>活跃块</th><th>来源</th><th>更新时间</th></tr></thead><tbody>
+        <th>版本</th><th>活跃块</th><th>来源</th><th>更新时间</th></tr></thead><tbody>
       ${docs.map((d) => `<tr>
         <td class="mono">${escapeHtml(d.doc_id)}</td>
         <td>${escapeHtml(d.kb || "")}</td>
         <td>${escapeHtml(d.title || "")}</td>
         <td>${escapeHtml(d.lang || "—")}</td>
         <td>${escapeHtml(d.doc_type || "—")}</td>
-        <td>v${d.current_version}</td>
-        <td>${d.active_chunks}</td>
+        <td><span class="chip">v${d.current_version}</span></td>
+        <td><b>${d.active_chunks}</b></td>
         <td class="mono">${escapeHtml(d.source_uri || "")}</td>
         <td class="mono">${escapeHtml((d.updated_at || "").replace("T"," ").slice(0,19))}</td>
-      </tr>`).join("")}</tbody></table>`;
+      </tr>`).join("")}</tbody></table></div>`;
   } catch (e) {
-    box.innerHTML = `<div class="notes err">读取失败：${escapeHtml(e.message)}<br>
-      请确认 kf-ingest 已启动并配置了 DATABASE_URL。</div>`;
+    box.innerHTML = `<div class="note err" style="margin:14px"><div>
+      读取失败：${escapeHtml(e.message)}<br>
+      请确认 kf-ingest 已启动并配置了 DATABASE_URL。</div></div>`;
   }
 }
 
-/* ---------- 检索 ---------- */
+/* ============================================================
+   检索
+   ============================================================ */
 $("btn-profiles").onclick = loadProfiles;
 async function loadProfiles() {
+  const btn = $("btn-profiles");
   try {
     const data = await req(baseRetrieve(), "/v1/profiles");
     const list = Array.isArray(data) ? data : (data.profiles || []);
@@ -939,19 +1547,33 @@ async function loadProfiles() {
     sel.innerHTML = list.map((p) =>
       `<option value="${escapeHtml(p)}"${p === safe ? " selected" : ""}>${escapeHtml(p)}${p === safe ? "（安全默认）" : ""}</option>`
     ).join("");
-    if (list.length) $("btn-profiles").textContent = `${list.length} 档`;
+    btn.textContent = list.length ? `${list.length} 个档位` : "档位不可用";
   } catch (e) {
-    $("btn-profiles").textContent = "档位不可用";
+    btn.textContent = "档位不可用";
   }
 }
+
+/* 快捷问题：点一下直接填进输入框并检索 —— 省得用户不知道该问什么。
+   默认问题也换成 acme/demo 里**确实有答案**的（原来是「保修期是多久」，
+   那个库根本没有该内容，点了只会得到拒答，看着像按钮坏了）。 */
+document.querySelectorAll("#quick-queries button").forEach((b) => {
+  b.onclick = () => {
+    $("query").value = b.dataset.q || b.textContent;
+    doSearch();
+  };
+});
+
+$("query").addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); doSearch(); }
+});
 
 $("btn-search").onclick = doSearch;
 async function doSearch() {
   const q = $("query").value.trim();
-  if (!q) { alert("请输入查询语句"); return; }
+  if (!q) { toast("请输入查询语句", "warn"); $("query").focus(); return; }
   const btn = $("btn-search");
-  btn.disabled = true;
-  $("search-result").innerHTML = '<div class="empty"><span class="busy"></span> 检索中…</div>';
+  setBusy(btn, true, "检索中…");
+  $("search-result").innerHTML = `<div class="card"><div class="empty"><span class="spin"></span> 检索中…</div></div>`;
   const t0 = performance.now();
   try {
     const body = {
@@ -971,10 +1593,12 @@ async function doSearch() {
     });
     renderSearch(data, performance.now() - t0);
   } catch (e) {
-    $("search-result").innerHTML = `<div class="notes err">检索失败：${escapeHtml(e.message)}<br>
-      请确认 kf-retrieve 已启动（默认 8082）。</div>`;
+    $("search-result").innerHTML = `<div class="card"><div class="card-b">
+      <div class="note err"><div>检索失败：${escapeHtml(e.message)}<br>
+      请确认 kf-retrieve 已启动（默认 8082），并先在「接入 Agent」页检查连接。</div></div></div></div>`;
+    toast("检索失败：" + e.message, "err", 6000);
   } finally {
-    btn.disabled = false;
+    setBusy(btn, false);
   }
 }
 
@@ -982,71 +1606,93 @@ function renderSearch(d, ms) {
   const ev = d.evidence || [], cites = d.citations || [], tr = d.trace || {};
   const ch = tr.channels || {};
   const chText = Object.keys(ch).length
-    ? Object.entries(ch).map(([k, v]) => `${k}:${v}`).join(" ") : "无通道命中";
+    ? Object.entries(ch).map(([k, v]) => `${k}:${v}`).join("  ") : "无通道命中";
 
-  let html = `<div class="meta">耗时 ${ms.toFixed(0)} ms ·
-      档位 <span class="chip">${escapeHtml(tr.profile || "—")}</span> ·
-      通道 <span class="chip">${escapeHtml(chText)}</span> ·
-      融合 ${escapeHtml(tr.fusion || "—")} · 重排 ${tr.reranked ? "已启用" : "未启用（无候选或端点未配置）"} ·
-      重排耗时 ${d.rerank_ms || 0} ms · 查询语言 ${escapeHtml(tr.lang || "—")} ·
-      集合 <span class="mono">${escapeHtml(tr.collection || "")}</span> ·
-      上下文 token ${tr.tokens_used || 0}</div>`;
+  // 概览卡：一次看清"耗时 / 档位 / 通道 / 是否拒答"
+  let html = `<div class="card"><div class="card-h">
+      <h3>检索结果</h3>
+      <span class="chip ${tr.refused ? "err" : "ok"}">${tr.refused ? "拒答" : `证据 ${ev.length} 条`}</span>
+      <span class="chip">${ms.toFixed(0)} ms</span>
+      <span class="chip violet">${escapeHtml(tr.profile || "—")}</span>
+      <div class="grow"></div>
+      <span class="hint">融合 ${escapeHtml(tr.fusion || "—")} · 重排 ${
+        tr.reranked ? `已启用 ${d.rerank_ms || 0} ms` : "未启用"} · 上下文 ${tr.tokens_used || 0} token</span>
+    </div>
+    <div class="card-b">
+      <div class="hint">通道 <span class="chip">${escapeHtml(chText)}</span> ·
+        查询语言 ${escapeHtml(tr.lang || "—")} ·
+        集合 <span class="mono">${escapeHtml(tr.collection || "")}</span>
+        ${tr.answerability != null ? ` · 可达分 <b>${tr.answerability}</b> / 阈值 ${tr.threshold_value ?? "—"}` : ""}
+      </div>`;
 
   if (d.refused || tr.refused) {
-    html += `<div class="notes">按档位拒答：最高分低于答案可达阈值（top_score=${
-      escapeHtml(String(d.top_score ?? "—"))}）</div>`;
+    html += `<div class="note warn" style="margin-top:12px"><div>
+      <b>按档位拒答</b>：答案可达分未达到阈值，说明该库中没有足够依据。
+      ${d.top_score != null ? `（top_score=${escapeHtml(String(d.top_score))}）` : ""}
+      <br><span class="hint">这不是故障。换一个与文档内容相关的问题，或确认 租户/库 是否对应。</span>
+      </div></div>`;
   }
   if ((tr.notes || []).length) {
-    html += `<div class="notes">降级/提示：${tr.notes.map(escapeHtml).join("；")}</div>`;
+    html += `<div class="note" style="margin-top:12px"><div>降级/提示：${tr.notes.map(escapeHtml).join("；")}</div></div>`;
   }
+
   const gtr = tr.graph || {}, str = tr.structured || {};
   const extras = [];
-  if (tr.agentic_stop) extras.push(`Agentic 轮数 ${tr.agentic_rounds ?? 0}·停止 ${tr.agentic_stop}`);
-  if (gtr.enabled) extras.push(`Graph 命中实体 ${(gtr.entities_matched || []).join("/") || "无"}·社区 ${gtr.communities_used || 0}·${gtr.hops || 0} 跳`);
+  if (tr.agentic_stop) extras.push(`Agentic 轮数 ${tr.agentic_rounds ?? 0} · 停止 ${tr.agentic_stop}`);
+  if (gtr.enabled) extras.push(`Graph 命中实体 ${(gtr.entities_matched || []).join("/") || "无"} · 社区 ${gtr.communities_used || 0} · ${gtr.hops || 0} 跳`);
   else if (gtr.hops !== undefined) extras.push("Graph 未启用");
   if (str.matched !== undefined) extras.push(`结构化命中 ${str.matched}`);
   else if (str.skipped) extras.push(`结构化跳过：${str.skipped}`);
-  if (extras.length) html += `<div class="meta">${extras.map(escapeHtml).join(" · ")}</div>`;
+  if (extras.length) html += `<div class="hint" style="margin-top:9px">${extras.map(escapeHtml).join(" · ")}</div>`;
 
   if (!ev.length) {
-    html += `<div class="empty">没有召回任何证据。请确认已摄入文档，且 租户/库 与摄入时一致（集合名 <span class="mono">kf_&lt;tenant&gt;_&lt;kb&gt;</span>）。</div>`;
+    html += `<div class="empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+        <circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg>
+      <div>没有召回任何证据</div>
+      <div class="hint">确认已摄入文档，且 租户/库 与摄入时一致（集合名 <span class="mono">kf_&lt;tenant&gt;_&lt;kb&gt;</span>）</div>
+    </div></div></div>`;
     $("search-result").innerHTML = html;
     return;
   }
 
-  html += `<h3 style="margin:18px 0 10px;font-size:14.5px">证据 ${ev.length} 条（父块回填后按「首尾强、中间弱」排序）</h3>`;
+  html += `<div class="hint" style="margin-top:14px">证据按「首尾强、中间弱」排序（抗中间遗忘）</div>`;
+  html += `</div></div>`;   // 关掉概览卡
+
+  // 证据卡
   html += ev.map((e, i) => {
     const range = (e.char_range && e.char_range.length === 2)
       ? `字符 ${e.char_range[0]}–${e.char_range[1]}` : "无字符偏移";
     return `<div class="ev">
-      <h4>
-        <span class="chip score">#${i + 1} ${Number(e.score || 0).toFixed(4)}</span>
-        <span class="chip page">第 ${e.page ?? "?"} 页</span>
+      <div class="ev-h">
+        <span class="chip ok">#${i + 1}</span>
+        <span class="chip">score ${Number(e.score || 0).toFixed(4)}</span>
+        <span class="chip violet">第 ${e.page ?? "?"} 页</span>
         ${e.chunk_type ? `<span class="chip">${escapeHtml(e.chunk_type)}</span>` : ""}
         ${e.retrieval_channel ? `<span class="chip">${escapeHtml(e.retrieval_channel)} 通道</span>` : ""}
-        ${e.parent_chunk_id ? `<span class="chip">父块回填</span>` : ""}
-      </h4>
-      <pre>${escapeHtml(e.content || "")}</pre>
-      <div class="meta">
+      </div>
+      <div class="ev-b"><pre>${escapeHtml(e.content || "")}</pre></div>
+      <div class="ev-m">
         命中子块 <span class="mono">${escapeHtml(e.chunk_id || "")}</span>
         ${e.offset_chunk_id && e.offset_chunk_id !== e.chunk_id
           ? ` · 偏移归属 <span class="mono">${escapeHtml(e.offset_chunk_id)}</span>` : ""}
-        ${e.parent_chunk_id ? ` · 内容取自父块 <span class="mono">${escapeHtml(e.parent_chunk_id)}</span>` : ""}
-        <br/>引用定位：<b>${range}</b>
+        · 引用定位 <b>${range}</b>
         ${e.source_uri ? ` · 来源 <span class="mono">${escapeHtml(e.source_uri)}</span>` : ""}
       </div></div>`;
   }).join("");
 
   if (cites.length) {
-    html += `<h3 style="margin:18px 0 10px;font-size:14.5px">引用 ${cites.length} 条</h3>
-      <table><thead><tr><th>doc_id</th><th>页</th><th>章节</th><th>字符区间</th><th>来源</th></tr></thead><tbody>
-      ${cites.map((c) => `<tr>
-        <td class="mono">${escapeHtml(c.doc_id || "")}</td>
-        <td>${c.page ?? "?"}</td>
-        <td>${escapeHtml(c.section || "—")}</td>
-        <td class="mono">${c.char_range ? c.char_range.join("–") : "—"}</td>
-        <td class="mono">${escapeHtml(c.url || "—")}</td>
-      </tr>`).join("")}</tbody></table>`;
+    html += `<div class="card" style="margin-top:16px"><div class="card-h">
+        <h3>引用</h3><span class="chip ok">${cites.length} 条</span></div>
+      <div class="card-b tight"><div style="overflow:auto"><table><thead><tr>
+        <th>doc_id</th><th>页</th><th>章节</th><th>字符区间</th><th>来源</th></tr></thead><tbody>
+        ${cites.map((c) => `<tr>
+          <td class="mono">${escapeHtml(c.doc_id || "")}</td>
+          <td>${c.page ?? "?"}</td>
+          <td>${escapeHtml(c.section || "—")}</td>
+          <td class="mono">${c.char_range ? c.char_range.join("–") : "—"}</td>
+          <td class="mono">${escapeHtml(c.url || "—")}</td>
+        </tr>`).join("")}</tbody></table></div></div></div>`;
   }
 
   html += `<details><summary>查看 trace（阶段耗时 / 通道 / 降级口径）</summary>
@@ -1054,14 +1700,32 @@ function renderSearch(d, ms) {
   $("search-result").innerHTML = html;
 }
 
-/* ---------- 工具 ---------- */
-function escapeHtml(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (m) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+/* ============================================================
+   复制
+   ============================================================ */
+async function copyText(text, okMsg) {
+  try {
+    await navigator.clipboard.writeText(text);
+    if (okMsg) toast(okMsg, "ok");
+  } catch (e) {
+    // file:// 下 clipboard API 可能被拒，退回 textarea 选中法
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (_) { ok = false; }
+    document.body.removeChild(ta);
+    toast(ok ? (okMsg || "已复制") : "复制失败，请手动选中", ok ? "ok" : "err");
+  }
 }
 
+/* ============================================================
+   启动
+   ============================================================ */
+syncAccessDefaults();
 checkHealth();
 loadProfiles();
 </script>
+
 </body>
 </html>
