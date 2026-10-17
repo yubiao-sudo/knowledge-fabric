@@ -109,11 +109,14 @@ def test_near_duplicate_dropped_by_simhash():
 
 # ------------------------------------------------------------------ 预算硬限
 def test_budget_hard_limit_skips_overflow():
-    # 每块 "你好世界" ≈ 5 token
+    # 每块 ≈ 5 token。
+    # ⚠️ 这里**必须用不同内容**：assemble 会先做去重（逐字相同即合并），
+    # 三条一样的句子会先被压成一条，测不到预算截断。
+    # 早先这个夹具用的是三次 "你好世界"，在去重加入后断言就失效了。
     per = estimate_tokens("你好世界")
     assert per == 5
     result = assemble(
-        [cand("a", 0.9, "你好世界"), cand("b", 0.8, "你好世界"), cand("c", 0.7, "你好世界")],
+        [cand("a", 0.9, "你好世界"), cand("b", 0.8, "世界和平"), cand("c", 0.7, "平安喜乐")],
         budget_tokens=12,
     )
     assert len(result["evidence"]) == 2

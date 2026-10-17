@@ -340,17 +340,37 @@ def assemble(
     }
 
 
+def _exact_key(content: str) -> str:
+    """把内容归一成"逐字比较键"：去掉**所有**空白。
+
+    为什么需要这一层：SimHash 那条路径有 `MIN_LEN_NEAR=120` 的长度下限
+    （太短的文本 SimHash 噪声大，容易误判），于是**短证据的重复永远不被剔除**
+    —— 真机上同一段 40 字的规则因为来自两份不同的 doc_id，在结果里出现了两遍。
+    逐字归一后比较是零误判的，短文本也该走。
+    """
+    return "".join(str(content or "").split())
+
+
 def _dedupe_near(items: Sequence[Dict[str, Any]],
                  max_distance: int = SIMHASH_MAX_DISTANCE) -> List[Dict[str, Any]]:
-    """近似重复剔除：SimHash 汉明距离 ≤ max_distance 视为同源，留下更高分者。
+    """重复剔除，两级：
+
+    1. **逐字相同**（仅空白差异）——对所有长度生效，零误判；
+    2. **近似重复**（SimHash 汉明距离 ≤ max_distance）——只对长文本生效。
 
     输入已按分数降序，因此只需与**已保留**项比较——已丢弃项没有比较价值，
     旧实现把已丢弃的哈希也留在比较集里，会让后续不同内容被误判为重复。
     """
     kept: List[Dict[str, Any]] = []
     hashes: List[int] = []
+    seen_exact: set = set()
     for cand in items:
         content = str(cand.get("content") or "")
+        exact = _exact_key(content)
+        if exact:
+            if exact in seen_exact:
+                continue
+            seen_exact.add(exact)
         if len(content) < MIN_LEN_NEAR:
             kept.append(cand)
             continue
