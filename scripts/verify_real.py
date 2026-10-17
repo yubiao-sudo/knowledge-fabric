@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import time
@@ -30,6 +31,9 @@ QDRANT = "http://localhost:6333"
 DEFAULT_PDF = r"C:\Users\OMEN\AppData\Local\Temp\kf_ab.pdf"
 
 PG = ["docker", "exec", "kf-postgres", "psql", "-U", "kf", "-d", "knowledge_fabric", "-t", "-A", "-c"]
+
+# 本次运行临时兑换的令牌（结束后吊销，避免在库里留垃圾）
+_TOKENS_TO_REVOK: list = []
 
 TENANT = "acme"
 KB = "final"
@@ -123,21 +127,67 @@ def verify_qdrant(stages: dict) -> None:
               f"{info['points_count']} vs {expect}")
 
 
+def agent_token() -> str:
+    """拿一个可用的接入令牌：优先环境变量，否则当场用接入码兑换。
+
+    底座一旦签发过令牌就会强制鉴权（`KF_REQUIRE_AUTH=auto`），
+    此时不带令牌的 `/v1/search` 一律 401。验收脚本不能因此"挂掉"，
+    但也不该让人手工准备令牌——本机跑就现场兑换一个，用完即吊销。
+    """
+    tok = (os.environ.get("KF_AGENT_TOKEN") or "").strip()
+    if tok:
+        return tok
+    try:
+        pair = httpx.post(f"{RETRIEVE}/v1/auth/pairing",
+                          json={"tenant": TENANT, "name": "verify_real"},
+                          timeout=20).json()
+        code = pair.get("code")
+        if not code:
+            return ""
+        ex = httpx.post(f"{RETRIEVE}/v1/auth/exchange",
+                        json={"code": code, "name": "verify_real"},
+                        timeout=20).json()
+        tok = ex.get("token") or ""
+        if tok:
+            _TOKENS_TO_REVOK.append(ex.get("key_id") or "")
+        return tok
+    except Exception:
+        return ""
+
+
+def _auth_headers() -> dict:
+    tok = agent_token()
+    return {"Authorization": f"Bearer {tok}"} if tok else {}
+
+
 def verify_retrieval() -> None:
     print("\n=== C. 检索精准度 ===")
     if not reachable(f"{RETRIEVE}/health"):
         check("检索服务可达", None, f"{RETRIEVE} 未启动")
         return
+    # 鉴权状态要如实报出来，否则 401 会被误读成"检索坏了"
+    try:
+        st = httpx.get(f"{RETRIEVE}/health", timeout=20).json().get("auth") or {}
+        check("鉴权状态可见", True,
+              f"mode={st.get('mode')} required={st.get('required')}")
+    except Exception:
+        pass
+    headers = _auth_headers()
     # 查询必须**确实能从该库回答**：acme/final 是 kf_ab.pdf（运维规范：密码/账号/信息安全）。
     # 早期这里用的是「保修期是多久」——那份文档里根本没有保修内容，在加入答案可达性
     # 闸门后会被正确拒答（0 证据），于是断言失败。断言应当跟着契约走，不是反过来。
     query = "密码长度要求是多少位"
     for profile in ("hybrid_rerank", "naive"):
         try:
-            data = httpx.post(f"{RETRIEVE}/v1/search",
+            resp = httpx.post(f"{RETRIEVE}/v1/search",
                               json={"query": query, "tenant": TENANT, "kb": KB,
                                     "profile": profile, "top_k": 10},
-                              timeout=180).json()
+                              headers=headers, timeout=180)
+            if resp.status_code == 401:
+                check(f"[{profile}] 检索请求成功", False,
+                      "HTTP 401：未拿到接入令牌（设 KF_AGENT_TOKEN 或确认能在本机签发）")
+                continue
+            data = resp.json()
         except Exception as exc:
             check(f"[{profile}] 检索请求成功", False, str(exc))
             continue
@@ -170,7 +220,9 @@ def verify_isolation() -> None:
         "JOIN pg_attribute a ON a.attrelid=c.oid AND a.attname='tenant_id' AND a.attnum>0 "
         "WHERE c.relkind='r' "
         "AND NOT EXISTS (SELECT 1 FROM pg_policies p WHERE p.tablename=c.relname) "
-        "AND c.relname NOT IN ('tenants','workspaces');")
+        # 例外说明：tenants/workspaces 是全局注册表；api_keys/pairing_codes 是
+        # **跨租户凭证表**（db/005 里刻意不启用 RLS，鉴权代码按 tenant_id 显式过滤）。
+        "AND c.relname NOT IN ('tenants','workspaces','api_keys','pairing_codes');")
     check("除全局注册表外，带 tenant_id 的表都有 RLS 策略", not uncovered, uncovered or "无遗漏")
     check("documents 已开启 RLS",
           sql("SELECT relrowsecurity FROM pg_class WHERE relname='documents';") == "t")
@@ -238,4 +290,14 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    code = main()
+    # 清理：吊销本次为验收临时兑换的令牌（失败不影响结论）
+    for key_id in _TOKENS_TO_REVOK:
+        if not key_id:
+            continue
+        try:
+            httpx.post(f"{RETRIEVE}/v1/auth/revoke",
+                       json={"id": key_id}, timeout=20)
+        except Exception:
+            pass
+    sys.exit(code)

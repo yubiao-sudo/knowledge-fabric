@@ -12,11 +12,11 @@ import os
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from . import adaptive, auth, kbs
 from .backends import TEIEmbedClient, build_backend, local_embed_status, try_embed_client
-from . import adaptive
 from .config import load_retrieval_config
 from .profile import profiles_summary
 from .rerank import local_rerank_status, rerank_url
@@ -171,6 +171,9 @@ def health() -> Dict[str, Any]:
             "adaptive": adaptive.status(),
             "note": "url_configured 仅表示环境变量已配置；端点可达性见检索响应的 trace.reranked",
         },
+        # 接入鉴权状态：mode=auto 时"一旦签发过令牌就自动强制"。
+        # 必须暴露出来——否则客户端拿到 401 会以为地址填错了。
+        "auth": auth.status(),
     }
 
 
@@ -179,8 +182,147 @@ def profiles() -> Dict[str, Any]:
     return profiles_summary(load_retrieval_config())
 
 
+# ---------------------------------------------------------------- 接入鉴权
+def _bearer(request: Request) -> str:
+    raw = request.headers.get("authorization") or ""
+    if raw.lower().startswith("bearer "):
+        return raw[7:].strip()
+    # 兼容 agent 侧图省事用自定义头
+    return (request.headers.get("x-kf-token") or "").strip()
+
+
+def require_agent(request: Request) -> Optional[Dict[str, Any]]:
+    """数据类接口的统一前置：需要时校验令牌。
+
+    `KF_REQUIRE_AUTH=off`（或尚未签发任何令牌时的 auto）直接放行，
+    保证本地开发与既有测试不受影响。
+    """
+    if not auth.auth_required():
+        return None
+    info = auth.verify_token(_bearer(request))
+    if info is None:
+        raise HTTPException(
+            status_code=401,
+            detail="缺少或无效的接入令牌。请在底座控制台生成接入码，"
+                   "或在 agent 里填入令牌（Authorization: Bearer <token>）",
+        )
+    return info
+
+
+def require_agent_or_loopback(request: Request) -> Optional[Dict[str, Any]]:
+    """只读目录接口用：**本机控制台免令牌，跨机一律要令牌**。
+
+    为什么不统一要求令牌：控制台就是发令牌的地方，如果它自己也得先有令牌，
+    就变成"先有鸡还是先有蛋"。而控制台只在本机打开（file:// + 127.0.0.1），
+    本机进程能读到的东西本来就比一个知识库目录敏感得多。
+
+    带令牌时仍强制收窄到令牌所属租户（见 `/v1/kbs` 的覆写逻辑）。
+    """
+    if not auth.auth_required():
+        return None
+    info = auth.verify_token(_bearer(request))
+    if info is not None:
+        return info
+    host = request.client.host if request.client else None
+    if auth.is_loopback(host):
+        # 本机且未带令牌 → 管理员视角（可看全部租户）
+        return None
+    raise HTTPException(
+        status_code=401,
+        detail="跨机访问知识库目录需要接入令牌（本机控制台免令牌）",
+    )
+
+
+def _require_loopback(request: Request) -> None:
+    """签发接入码/管理令牌只允许本机。
+
+    远端 agent 能**兑换**接入码，但不能**签发**——否则任何人都能给自己发令牌。
+    """
+    host = request.client.host if request.client else None
+    if not auth.is_loopback(host):
+        raise HTTPException(status_code=403,
+                            detail="该操作仅允许在本机（127.0.0.1）执行")
+
+
+@app.post("/v1/auth/pairing")
+def create_pairing(request: Request, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """生成一次性接入码（仅本机）。"""
+    _require_loopback(request)
+    tenant = str(payload.get("tenant") or "").strip()
+    if not tenant:
+        raise HTTPException(status_code=400, detail="tenant 不能为空")
+    try:
+        ttl = int(payload.get("ttl_sec") or auth.CODE_TTL_DEFAULT)
+    except (TypeError, ValueError):
+        ttl = auth.CODE_TTL_DEFAULT
+    try:
+        return auth.create_pairing(tenant, ttl_sec=ttl,
+                                   name=str(payload.get("name") or "agent"))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"生成接入码失败: {exc}")
+
+
+@app.post("/v1/auth/exchange")
+def exchange_pairing(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """用接入码换长期令牌。允许远端调用（码本身就是凭证）。"""
+    code = str(payload.get("code") or "").strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="code 不能为空")
+    try:
+        result = auth.exchange_pairing(code, name=str(payload.get("name") or "agent"))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"兑换失败: {exc}")
+    if result is None:
+        raise HTTPException(status_code=401, detail="接入码无效")
+    if result.get("error"):
+        raise HTTPException(status_code=401, detail=result["error"])
+    return result
+
+
+@app.get("/v1/auth/keys")
+def list_keys(request: Request) -> Dict[str, Any]:
+    _require_loopback(request)
+    return {"keys": auth.list_keys(), "status": auth.status()}
+
+
+@app.post("/v1/auth/revoke")
+def revoke_key(request: Request, payload: Dict[str, Any]) -> Dict[str, Any]:
+    _require_loopback(request)
+    key_id = str(payload.get("id") or "").strip()
+    if not key_id:
+        raise HTTPException(status_code=400, detail="id 不能为空")
+    return {"revoked": auth.revoke_key(key_id), "id": key_id}
+
+
+# ---------------------------------------------------------------- 知识库目录
+@app.get("/v1/kbs")
+def list_kbs(request: Request, tenant: Optional[str] = None) -> Dict[str, Any]:
+    """列出知识库。**agent 靠这个接口发现可用库，不必连数据库。**"""
+    info = require_agent_or_loopback(request)
+    # 带令牌时只允许看自己租户的库（租户隔离不能靠调用方自觉）
+    if info is not None:
+        tenant = info["tenant_id"]
+    items = kbs.list_kbs(tenant)
+    return {"count": len(items), "items": items,
+            "note": "按 chunks 实时聚合；dense_ratio<1 说明含重摄入前写入的旧切片"}
+
+
+@app.get("/v1/kb/{tenant}/{kb}")
+def get_kb(request: Request, tenant: str, kb: str) -> Dict[str, Any]:
+    info = require_agent_or_loopback(request)
+    if info is not None and info["tenant_id"] != tenant:
+        raise HTTPException(status_code=403, detail="令牌无权访问该租户的知识库")
+    detail = kbs.get_kb(tenant, kb)
+    if detail is None:
+        raise HTTPException(status_code=404, detail=f"知识库不存在: {tenant}/{kb}")
+    return detail
+
+
 @app.post("/v1/search")
-def search(req: SearchRequest) -> Dict[str, Any]:
+def search(req: SearchRequest, request: Request) -> Dict[str, Any]:
+    info = require_agent(request)
+    if info is not None and req.tenant != info["tenant_id"]:
+        raise HTTPException(status_code=403, detail="令牌无权访问该租户的知识库")
     backend = get_backend()
     return run_search(req, backend, cfg=load_retrieval_config(), backend_notes=backend_notes())
 

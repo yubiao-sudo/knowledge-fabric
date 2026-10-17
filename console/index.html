@@ -156,6 +156,11 @@
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
            stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg>检索问答
     </div>
+    <div class="tab" data-tab="access">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>接入 Agent
+    </div>
   </div>
 
   <!-- ========== 摄入 ========== -->
@@ -313,6 +318,71 @@
     <div id="search-result" style="margin-top:16px"></div>
   </section>
 
+  <!-- ========== 接入 Agent ========== -->
+  <section class="card panel" id="panel-access" hidden>
+    <p class="hint" style="margin:0 0 14px">
+      这里生成的东西是给 <strong>agent 客户端</strong>用的：填服务地址 + 接入码，它就能把这个知识库当自己的 RAG 用。
+      接入码只能用一次、10 分钟内有效；兑换出的令牌可以长期使用，也能在这里随时吊销。
+    </p>
+
+    <div class="grid">
+      <div>
+        <label>底座服务地址（agent 那边就填这个）</label>
+        <input id="acc-base" value="http://127.0.0.1:8082" spellcheck="false" />
+      </div>
+      <div>
+        <label>租户 tenant</label>
+        <input id="acc-tenant" value="acme" spellcheck="false" />
+      </div>
+      <div>
+        <label>知识库 kb</label>
+        <input id="acc-kb" value="demo" spellcheck="false" />
+      </div>
+      <div class="row">
+        <button id="btn-pairing" style="flex:1">生成接入码</button>
+        <button class="ghost" id="btn-keys">刷新令牌</button>
+      </div>
+    </div>
+
+    <div id="pairing-box" hidden style="margin-top:14px">
+      <label>接入码（复制给 agent，10 分钟内有效，用一次即失效）</label>
+      <div class="row" style="align-items:center">
+        <div id="pairing-code" class="mono"
+             style="font-size:22px;letter-spacing:2px;padding:10px 16px;border:1px dashed var(--line);border-radius:10px;flex:1;text-align:center"></div>
+        <button class="ghost" id="btn-copy-code">复制</button>
+      </div>
+      <p class="hint" id="pairing-hint" style="margin:8px 0 0"></p>
+    </div>
+
+    <div style="margin-top:18px">
+      <label>已签发的令牌（只显示前缀，明文仅在兑换时返回一次）</label>
+      <div id="keys-list" class="hint">点「刷新令牌」查看</div>
+    </div>
+
+    <div style="margin-top:18px">
+      <label>给 agent 的配置（复制即用）</label>
+      <pre id="agent-config" class="mono"
+           style="background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:auto;font-size:12.5px;margin:0"></pre>
+      <div class="row" style="margin-top:8px">
+        <button class="ghost" id="btn-copy-config" style="flex:1">复制配置</button>
+        <span class="hint" id="config-token-note" style="flex:2;margin:0"></span>
+      </div>
+    </div>
+
+    <div style="margin-top:18px">
+      <label>Agent 视角预览 —— 这就是 agent 调用后拿到的内容</label>
+      <div class="row">
+        <input id="acc-query" placeholder="例如：密码长度要求是多少位" spellcheck="false"
+               value="密码长度要求是多少位" style="flex:3" />
+        <button id="btn-preview" style="flex:1">模拟调用</button>
+      </div>
+      <p class="hint" style="margin:8px 0 0">
+        没有令牌时本机仍可预览（控制台在本机，属管理员视角）；跨机访问一律需要令牌。
+      </p>
+    </div>
+    <div id="preview-result" style="margin-top:12px"></div>
+  </section>
+
   <p class="foot">Knowledge Fabric · 默认 evidence-only：只给证据与引用，由上层 agent 的 LLM 组织答案</p>
 </div>
 
@@ -359,12 +429,218 @@ async function checkHealth() {
 }
 $("btn-check").onclick = checkHealth;
 
+/* ==================================================================
+   接入 Agent：接入码 → 令牌 → 配置 → 视角预览
+   设计要点：
+     · 接入码由底座**签发**，只允许本机（控制台就在本机）；
+     · 令牌明文只在兑换那一刻返回，这里只留在内存变量里用于预览，
+       不写 localStorage（控制台是 file:// 打开的，本地存储并非保险箱）；
+     · 预览走的是和 agent 完全相同的接口，看到什么 agent 就拿到什么。
+   ================================================================== */
+let ACC_TOKEN = "";          // 仅内存，用于"Agent 视角预览"
+
+const accBase    = () => $("acc-base").value.trim().replace(/\/+$/, "");
+const accTenant  = () => $("acc-tenant").value.trim();
+const accKb      = () => $("acc-kb").value.trim();
+
+async function accReq(path, opts) {
+  const headers = Object.assign({}, (opts && opts.headers) || {});
+  if (ACC_TOKEN) headers["Authorization"] = "Bearer " + ACC_TOKEN;
+  return req(accBase(), path, Object.assign({}, opts, { headers }));
+}
+
+/* ---------- 生成接入码 ---------- */
+$("btn-pairing").onclick = async () => {
+  const btn = $("btn-pairing");
+  btn.disabled = true; btn.textContent = "生成中…";
+  try {
+    const data = await accReq("/v1/auth/pairing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tenant: accTenant(), name: "console" }),
+    });
+    $("pairing-code").textContent = data.code;
+    $("pairing-box").hidden = false;
+    $("pairing-hint").textContent =
+      `租户 ${data.tenant_id} · ${data.ttl_sec} 秒内有效 · 只能用一次。` +
+      `把它填进 agent 的「接入码」输入框，agent 会自动换取长期令牌。`;
+    // 顺手兑换一个令牌，供下面的预览与"复制配置"使用
+    try {
+      const ex = await accReq("/v1/auth/exchange", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: data.code, name: "console-preview" }),
+      });
+      ACC_TOKEN = ex.token || "";
+      $("config-token-note").textContent =
+        "已自动兑换令牌，下面配置里的 kb_token 可直接用（明文只显示这一次）。";
+      renderAgentConfig();
+      loadKeys();
+    } catch (e) {
+      $("config-token-note").textContent = "自动兑换失败：" + e.message;
+    }
+  } catch (e) {
+    $("pairing-box").hidden = false;
+    $("pairing-code").textContent = "失败";
+    $("pairing-hint").textContent = e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = "生成接入码";
+  }
+};
+
+$("btn-copy-code").onclick = () => copyText($("pairing-code").textContent);
+
+/* ---------- 令牌列表 ---------- */
+async function loadKeys() {
+  const box = $("keys-list");
+  try {
+    const data = await accReq("/v1/auth/keys");
+    const keys = (data && data.keys) || [];
+    if (!keys.length) {
+      box.innerHTML = `<span class="hint">还没有签发过令牌。点「生成接入码」开始。</span>`;
+      return;
+    }
+    box.innerHTML = keys.map((k) => `
+      <div class="row" style="align-items:center;padding:7px 0;border-bottom:1px solid var(--line)">
+        <span class="mono" style="flex:2">${esc(k.prefix)}…</span>
+        <span class="hint" style="flex:1;margin:0">${esc(k.tenant_id)} · ${esc(k.name || "agent")}</span>
+        <span class="hint" style="flex:2;margin:0">最近使用 ${k.last_used_at ? k.last_used_at.slice(0, 19).replace("T", " ") : "—"}</span>
+        ${k.revoked
+          ? `<span class="hint" style="flex:1;margin:0;color:#f88">已吊销</span>`
+          : `<button class="ghost" data-revoke="${esc(k.id)}" style="flex:1">吊销</button>`}
+      </div>`).join("");
+    box.querySelectorAll("[data-revoke]").forEach((b) => {
+      b.onclick = async () => {
+        if (!confirm("吊销后该令牌立即失效，agent 会开始报 401。确定？")) return;
+        try {
+          await accReq("/v1/auth/revoke", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: b.dataset.revoke }),
+          });
+          loadKeys();
+        } catch (e) { alert("吊销失败：" + e.message); }
+      };
+    });
+  } catch (e) {
+    box.textContent = "读取令牌失败：" + e.message;
+  }
+}
+$("btn-keys").onclick = loadKeys;
+
+/* ---------- 给 agent 的配置 ---------- */
+function renderAgentConfig() {
+  const cfg = {
+    kb_mode: "remote",
+    kb_base_url: accBase(),
+    kb_tenant: accTenant(),
+    kb_id: accKb(),
+    kb_profile: "hybrid_rerank",
+    kb_top_k: 6,
+    kb_timeout_ms: 8000,
+    kb_fallback_local: false,
+    kb_token: ACC_TOKEN || "<粘贴接入码兑换得到的令牌>",
+  };
+  $("agent-config").textContent = Object.entries(cfg)
+    .map(([k, v]) => `${k}=${v}`).join("\n");
+}
+["acc-base","acc-tenant","acc-kb"].forEach((id) => {
+  $(id).addEventListener("input", renderAgentConfig);
+});
+$("btn-copy-config").onclick = () => copyText($("agent-config").textContent);
+
+/* 接入面板默认跟随顶部的服务地址/租户/库——省得两处填不一致 */
+function syncAccessDefaults() {
+  if (!$("acc-base").value.trim()) $("acc-base").value = baseRetrieve();
+  if (!$("acc-tenant").value.trim()) $("acc-tenant").value = $("tenant").value.trim();
+  if (!$("acc-kb").value.trim()) $("acc-kb").value = $("kb").value.trim();
+  renderAgentConfig();
+}
+syncAccessDefaults();
+
+/* ---------- Agent 视角预览 ---------- */
+$("btn-preview").onclick = async () => {
+  const btn = $("btn-preview");
+  btn.disabled = true; btn.textContent = "调用中…";
+  const box = $("preview-result");
+  box.innerHTML = "";
+  try {
+    const data = await accReq("/v1/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: $("acc-query").value.trim(),
+        tenant: accTenant(), kb: accKb(), top_k: 5,
+      }),
+    });
+    box.innerHTML = renderAgentView(data);
+  } catch (e) {
+    box.innerHTML = `<div class="ev"><strong>调用失败</strong><div class="hint">${esc(e.message)}</div></div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = "模拟调用";
+  }
+};
+
+function renderAgentView(data) {
+  const tr = data.trace || {};
+  const ev = data.evidence || [];
+  const refused = !!tr.refused;
+  const head = `
+    <div class="row" style="align-items:center;margin-bottom:10px">
+      <span class="pill" style="flex:0 0 auto"><i class="dot ${refused ? "err" : "ok"}"></i>
+        refused = <b class="mono">${refused}</b></span>
+      <span class="hint" style="margin:0">可达分 <b class="mono">${tr.answerability ?? "N/A"}</b>
+        · 阈值 <b class="mono">${tr.threshold_value ?? "—"}</b>
+        （${esc(String(tr.threshold_source || "—"))}）
+        · 档位 <b class="mono">${esc(String(tr.rerank_tier || "—"))}</b></span>
+    </div>`;
+  if (refused) {
+    return head + `<div class="ev"><strong>底座判定：拒答</strong>
+      <div class="hint">${esc(String(tr.refuse_reason || "依据不足"))}</div>
+      <div class="hint">agent 拿到 <span class="mono">refused=true</span> 与空证据后，
+        <strong>必须如实告知用户"知识库里没有依据"</strong>，不能凭常识补全。</div></div>`;
+  }
+  const cards = ev.map((e, i) => {
+    const range = Array.isArray(e.char_range) ? `[${e.char_range[0]}-${e.char_range[1]}]` : "—";
+    const text = String(e.content || "");
+    return `<div class="ev">
+      <div class="row" style="align-items:center;margin-bottom:6px">
+        <strong style="flex:0 0 auto">#${i + 1}</strong>
+        <span class="mono" style="flex:2">${esc(String(e.source_uri || e.source || "—"))}
+          · p${e.page ?? "—"} · ${esc(range)}</span>
+        <span class="hint" style="flex:0 0 auto;margin:0">score ${e.score ?? "—"}</span>
+      </div>
+      <div class="hint" style="margin:0 0 6px">${esc(String(e.chunk_id || ""))}
+        ${e.section_path ? " · " + esc([].concat(e.section_path).join(" / ")) : ""}</div>
+      <div style="font-size:12.5px;max-height:150px;overflow:auto;white-space:pre-wrap">${esc(text.slice(0, 600))}</div>
+    </div>`;
+  }).join("");
+  return head + (cards || `<div class="ev"><div class="hint">没有证据</div></div>`);
+}
+
+/* ---------- 小工具 ---------- */
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    // file:// 下 clipboard API 可能被拒，退回 textarea 选中法
+    const ta = document.createElement("textarea");
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand("copy"); document.body.removeChild(ta);
+  }
+}
+
 /* ---------- 标签页 ---------- */
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.onclick = () => {
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tab));
-    ["ingest","docs","search"].forEach((n) => { $("panel-" + n).hidden = (n !== tab.dataset.tab); });
+    ["ingest","docs","search","access"].forEach((n) => { $("panel-" + n).hidden = (n !== tab.dataset.tab); });
     if (tab.dataset.tab === "docs") loadDocs();
+    if (tab.dataset.tab === "access") { renderAgentConfig(); loadKeys(); }
     if (tab.dataset.tab === "search") loadProfiles();
   };
 });
