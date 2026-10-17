@@ -1,0 +1,14 @@
+# 检索服务依赖（查询理解 → 召回 → 融合 → 重排 → 组装）
+# 核心链路只依赖第一段；Qdrant / TEI 缺失时自动降级（MemoryBackend / 复用融合分）。
+
+# --- 核心（必需）---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+httpx==0.28.1
+pyyaml==6.0.2
+
+# --- 向量召回（可选，缺失时回退 MemoryBackend）---
+qdrant-client==1.12.1
+
+# --- 开发 / 测试 ---
+pytest==8.3.4

@@ -1,0 +1,185 @@
+name: knowledge-fabric
+
+# 说明：
+#  - 默认使用 CPU 版 TEI 镜像；如需 GPU，把 TEI_EMBED_IMAGE / TEI_RERANK_IMAGE
+#    换成 ghcr.io/huggingface/text-embeddings-inference:1.6.1 并给服务加 deploy.resources。
+#  - OpenSearch 用于「分语言 BM25 稀疏索引」，默认不启动，用 profile `lang-sparse` 开启。
+#  - 启动：docker compose up -d
+#  - 仅基础设施：docker compose up -d postgres qdrant redis minio
+
+services:
+  # ---------- 元数据 / ACL / 结构化字段（SKU、价格、规格） ----------
+  postgres:
+    image: postgres:16-alpine
+    container_name: kf-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kf}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kf_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-knowledge_fabric}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kf} -d ${POSTGRES_DB:-knowledge_fabric}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ---------- 向量库：dense + sparse（BGE-M3 三向量） ----------
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    container_name: kf-qdrant
+    ports:
+      - "${QDRANT_HTTP_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrantdata:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ---------- 队列 / 语义缓存 ----------
+  redis:
+    image: redis:7-alpine
+    container_name: kf-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+
+  # ---------- 对象存储：原始文档 / 解析中间产物 ----------
+  minio:
+    image: minio/minio:latest
+    container_name: kf-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER:-kf_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-kf_minio_password}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - miniodata:/data
+
+  # ---------- 嵌入服务：BGE-M3（dense + sparse + multivector 同源） ----------
+  tei-embed:
+    image: ${TEI_EMBED_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-1.6.1}
+    container_name: kf-tei-embed
+    command: ["--model-id", "${EMBED_MODEL:-BAAI/bge-m3}", "--port", "80", "--max-client-batch-size", "64"]
+    ports:
+      - "${TEI_EMBED_PORT:-8080}:80"
+    volumes:
+      - teidata:/data
+
+  # ---------- 重排服务：bge-reranker-v2-m3 ----------
+  tei-rerank:
+    image: ${TEI_RERANK_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-1.6.1}
+    container_name: kf-tei-rerank
+    command: ["--model-id", "${RERANK_MODEL:-BAAI/bge-reranker-v2-m3}", "--port", "80", "--max-client-batch-size", "32"]
+    ports:
+      - "${TEI_RERANK_PORT:-8081}:80"
+    volumes:
+      - teidata:/data
+
+  # ---------- 决策服务：Laya（System-1 决策模型，本地全量部署） ----------
+  decision:
+    build:
+      context: ./services/decision
+    container_name: kf-decision
+    environment:
+      LAYA_MODEL_ID: ${LAYA_MODEL_ID:-convaiinnovations/laya}
+      LAYA_MODEL_MULTILINGUAL_ID: ${LAYA_MODEL_MULTILINGUAL_ID:-convaiinnovations/laya-multilingual}
+      LAYA_DEVICE: ${LAYA_DEVICE:-cpu}
+      # 捆绑多 checkpoint，用 subfolder 选英文/多语言版本
+      LAYA_SUBFOLDER: ${LAYA_SUBFOLDER:-typed-decisions}
+      LAYA_SUBFOLDER_MULTILINGUAL: ${LAYA_SUBFOLDER_MULTILINGUAL:-multilingual}
+      # 本地目录优先（完全离线）；留空则用 LAYA_CACHE_DIR 内的 HF 缓存
+      LAYA_MODEL_PATH: ${LAYA_MODEL_PATH:-}
+      LAYA_CACHE_DIR: /models
+      # 决策超时（毫秒）：设计硬限 300ms 假设 ~33ms 推理；CPU 实测约 2.5s，
+      # CPU 环境保持 300 会令网关按超时回退 heuristic（服务端 mode=laya 却不生效）。
+      DECISION_TIMEOUT_MS: ${DECISION_TIMEOUT_MS:-300}
+      DECISION_PORT: "8090"
+    ports:
+      - "${DECISION_PORT:-8090}:8090"
+    volumes:
+      - layamodels:/models
+    restart: unless-stopped
+
+  # ---------- 检索服务：查询理解 → 召回 → 融合 → 重排 → 组装 ----------
+  # 内部用服务名互相寻址（Qdrant / TEI 都走 compose 网络）；
+  # RETRIEVAL_HOST_PORT 映射到宿主机，避开 tei-embed 已占用的 8080。
+  retrieve:
+    build:
+      context: ./services/retrieve
+    container_name: kf-retrieve
+    environment:
+      RETRIEVAL_PORT: "8080"
+      QDRANT_URL: http://qdrant:6333
+      TEI_EMBED_URL: http://tei-embed:80
+      TEI_RERANK_URL: http://tei-rerank:80
+      VLLM_URL: ${VLLM_URL:-}
+      KF_RETRIEVE_SEED_JSON: ${KF_RETRIEVE_SEED_JSON:-}
+      # 图检索（GraphRAG）走 Postgres；刻意用**非属主角色 kf_app**，
+      # 这样 RLS 才会真实生效（属主可绕过 RLS）。未配置则 graph 通道跳过。
+      DATABASE_APP_URL: postgresql://kf_app:${KF_APP_PASSWORD:-kf_app_password}@postgres:5432/${POSTGRES_DB:-knowledge_fabric}
+      # 分语言 BM25：默认关闭（空 ⇒ 走 Qdrant 稀疏 + payload lang 过滤）。
+      # 启用方式：docker compose --profile lang-sparse up -d opensearch，并把下面这行填上。
+      OPENSEARCH_URL: ${OPENSEARCH_INTERNAL_URL:-}
+      AGENTIC_MAX_ROUNDS: ${AGENTIC_MAX_ROUNDS:-3}
+    ports:
+      - "${RETRIEVAL_HOST_PORT:-8082}:8080"
+    depends_on:
+      - qdrant
+    restart: unless-stopped
+
+  # ---------- 摄入 HTTP 服务：上传即摄入（Web 控制台 / agent 接入用） ----------
+  # 内部用服务名寻址 Qdrant / Postgres / TEI；未配置的依赖只记 note 不报错。
+  # 控制台 console/index.html 默认连宿主机 8083（INGEST_HOST_PORT）。
+  ingest:
+    build:
+      context: ./services/ingest
+    container_name: kf-ingest
+    command: ["python", "-m", "uvicorn", "kf_ingest.app:app", "--host", "0.0.0.0", "--port", "8083"]
+    environment:
+      INGEST_PORT: "8083"
+      QDRANT_URL: http://qdrant:6333
+      # 摄入写库用**属主**连接（不受 RLS 限制，需写图/结构化/ACL 全量数据）
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kf}:${POSTGRES_PASSWORD:-kf_dev_password}@postgres:5432/${POSTGRES_DB:-knowledge_fabric}
+      TEI_EMBED_URL: http://tei-embed:80
+      VLLM_URL: ${VLLM_URL:-}
+      OPENSEARCH_URL: ${OPENSEARCH_INTERNAL_URL:-}
+    ports:
+      - "${INGEST_HOST_PORT:-8083}:8083"
+    depends_on:
+      - qdrant
+      - postgres
+    restart: unless-stopped
+
+  # ---------- 可选：分语言 BM25 稀疏索引（多语言库强烈建议开启） ----------
+  opensearch:
+    image: opensearchproject/opensearch:2.17.1
+    container_name: kf-opensearch
+    profiles: ["lang-sparse"]
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms1g -Xmx1g"
+    ports:
+      - "${OPENSEARCH_PORT:-9200}:9200"
+    volumes:
+      - osdata:/usr/share/opensearch/data
+
+volumes:
+  pgdata:
+  qdrantdata:
+  redisdata:
+  miniodata:
+  teidata:
+  layamodels:
+  osdata:

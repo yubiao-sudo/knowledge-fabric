@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowledge-fabric.local/schemas/response.schema.json",
+  "title": "RetrieveResponse",
+  "description": "对外响应契约。默认 evidence-only：把证据交给 agent 的 LLM 组织生成。",
+  "type": "object",
+  "required": ["query_id", "mode", "decision", "evidence", "citations", "trace"],
+  "properties": {
+    "query_id": { "type": "string" },
+    "mode": {
+      "enum": ["evidence-only", "grounded-answer", "agentic-answer", "graph-global"],
+      "description": "判断：本系统是检索底座，默认只给证据"
+    },
+
+    "decision": { "$ref": "decision.schema.json" },
+
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["chunk_id", "content", "score", "source", "page"],
+        "properties": {
+          "chunk_id": { "type": "string" },
+          "parent_chunk_id": { "type": ["string", "null"] },
+          "content": { "type": "string" },
+          "score": { "type": "number", "description": "重排后最终分" },
+          "source": { "type": "string" },
+          "page": { "type": "integer" },
+          "chunk_type": { "type": "string" },
+          "retrieval_channel": { "enum": ["dense", "sparse", "colbert", "structured", "graph"] },
+          "source_uri": { "type": ["string", "null"], "description": "来源文档 URI" },
+          "char_start": { "type": ["integer", "null"], "description": "命中子块在原文的起始偏移" },
+          "char_end": { "type": ["integer", "null"] },
+          "char_range": {
+            "type": ["array", "null"],
+            "items": { "type": "integer" },
+            "description": "provenance 区间 [char_start, char_end]，支持回原文高亮"
+          },
+          "offset_chunk_id": {
+            "type": ["string", "null"],
+            "description": "char_range 归属的 chunk（实际命中的子块）：父块回填只换 content，偏移仍属命中子块"
+          }
+        }
+      }
+    },
+
+    "answer": {
+      "type": ["string", "null"],
+      "description": "仅 grounded-answer / agentic-answer / graph-global 模式返回"
+    },
+
+    "citations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["doc_id", "page"],
+        "properties": {
+          "doc_id": { "type": "string" },
+          "page": { "type": "integer" },
+          "section": { "type": ["string", "null"] },
+          "url": { "type": ["string", "null"] },
+          "char_range": {
+            "type": ["array", "null"],
+            "items": { "type": "integer" },
+            "description": "provenance 区间，支持点击回原文"
+          }
+        }
+      }
+    },
+
+    "grounding": {
+      "type": "object",
+      "description": "Grounding 校验结果；不通过则拒答",
+      "properties": {
+        "passed": { "type": "boolean" },
+        "score": { "type": "number" },
+        "refused": { "type": "boolean" },
+        "refuse_reason": { "type": ["string", "null"] }
+      }
+    },
+
+    "trace": {
+      "type": "object",
+      "required": ["stages_ms"],
+      "properties": {
+        "stages_ms": {
+          "type": "object",
+          "properties": {
+            "understand": { "type": "number" },
+            "decide": { "type": "number" },
+            "retrieve": { "type": "number" },
+            "rerank": { "type": "number" },
+            "assemble": { "type": "number" },
+            "generate": { "type": "number" }
+          }
+        },
+        "agentic_rounds": { "type": "integer" },
+        "tokens_used": { "type": "integer" },
+        "cost_estimate": { "type": "number" }
+      }
+    }
+  }
+}

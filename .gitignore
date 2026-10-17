@@ -1,0 +1,43 @@
+# env
+#   .env.local 放本机私有配置（云端 LLM 端点与密钥等），绝不入库。
+#   加载优先级见 examples/grounding_agent.py 的模块 docstring。
+.env
+.env.local
+*.env.local
+examples/.env.local
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# rust
+target/
+# Cargo.lock **要入库**：本仓库是可执行的网关服务（二进制 crate），
+# 锁文件决定可复现构建；只有纯库项目才该忽略它。
+
+# data / artifacts
+data/
+artifacts/
+*.log
+# 数据库备份含真实语料与租户数据，不入库（单个 30MB+）
+db/backup_*.sql
+db/*.dump
+
+# 标定产物：可重新生成，但入库便于复现阈值（保留）
+# configs/answerability_calibration.json
+
+# 重摄入中间产物
+db/reingest_plan.json
+db/reingest_result.json
+
+# models (local cache)
+models/
+
+# editor / os
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

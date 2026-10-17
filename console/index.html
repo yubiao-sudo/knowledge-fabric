@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Knowledge Fabric · 控制台</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#121a2e; --panel-2:#0e1526; --line:#22304d;
+    --text:#e8edf7; --muted:#93a2bf; --accent:#6ea8ff; --accent-2:#8b7cff;
+    --ok:#39d98a; --warn:#ffc046; --err:#ff6b6b;
+    --radius:14px; --shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:
+      radial-gradient(1100px 600px at 12% -10%, #1b2a52 0%, transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, #241f4d 0%, transparent 55%),
+      var(--bg);
+    color:var(--text); font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+    min-height:100vh;
+  }
+  .wrap{max-width:1180px; margin:0 auto; padding:24px 20px 60px}
+  header.top{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:18px}
+  .logo{width:40px;height:40px;flex:none}
+  .brand h1{font-size:19px; margin:0; letter-spacing:.3px}
+  .brand p{margin:2px 0 0; color:var(--muted); font-size:12.5px}
+  .spacer{flex:1}
+  .pills{display:flex; gap:8px; flex-wrap:wrap}
+  .pill{display:inline-flex; align-items:center; gap:7px; padding:6px 11px; border-radius:999px;
+        background:var(--panel); border:1px solid var(--line); font-size:12.5px; color:var(--muted)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);box-shadow:0 0 0 0 rgba(0,0,0,0)}
+  .dot.ok{background:var(--ok); box-shadow:0 0 10px rgba(57,217,138,.7)}
+  .dot.err{background:var(--err); box-shadow:0 0 10px rgba(255,107,107,.6)}
+  .card{background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,0)) ,var(--panel);
+        border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow)}
+  .settings{padding:12px 14px; margin-bottom:16px; display:grid; gap:10px;
+            grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+  label{display:block; font-size:12px; color:var(--muted); margin-bottom:5px}
+  input,select,textarea{width:100%; padding:9px 11px; border-radius:10px; border:1px solid var(--line);
+        background:var(--panel-2); color:var(--text); font:13.5px/1.5 inherit; outline:none}
+  input:focus,select:focus,textarea:focus{border-color:var(--accent); box-shadow:0 0 0 3px rgba(110,168,255,.15)}
+  input[type=checkbox]{width:auto}
+  .tabs{display:flex; gap:6px; margin-bottom:14px; border-bottom:1px solid var(--line); padding-bottom:0}
+  .tab{padding:10px 16px; border-radius:10px 10px 0 0; cursor:pointer; color:var(--muted);
+       border:1px solid transparent; border-bottom:none; font-weight:600; font-size:13.5px;
+       display:inline-flex; align-items:center; gap:8px; background:transparent}
+  .tab:hover{color:var(--text)}
+  .tab.active{color:var(--text); background:var(--panel); border-color:var(--line); position:relative}
+  .tab.active::after{content:"";position:absolute; left:0; right:0; bottom:-1px; height:2px; background:var(--panel)}
+  .panel{padding:18px}
+  .grid{display:grid; gap:14px; grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end}
+  button{cursor:pointer; border:none; border-radius:10px; padding:10px 18px; font:600 13.5px/1.4 inherit;
+         background:linear-gradient(135deg,var(--accent),var(--accent-2)); color:#08101f}
+  button.ghost{background:transparent; border:1px solid var(--line); color:var(--text)}
+  button:disabled{opacity:.55; cursor:not-allowed}
+  .drop{border:1.5px dashed var(--line); border-radius:12px; padding:26px 18px; text-align:center;
+        color:var(--muted); transition:.15s; background:var(--panel-2)}
+  .drop.hot{border-color:var(--accent); color:var(--text); background:rgba(110,168,255,.08)}
+  .drop strong{color:var(--text)}
+  .hint{font-size:12px; color:var(--muted); margin-top:6px}
+  .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin-top:14px}
+  .stat{background:var(--panel-2); border:1px solid var(--line); border-radius:11px; padding:11px 13px}
+  .stat b{display:block; font-size:20px; letter-spacing:.4px}
+  .stat span{font-size:11.5px; color:var(--muted)}
+  table{width:100%; border-collapse:collapse; font-size:13px}
+  th,td{text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top}
+  th{color:var(--muted); font-weight:600; font-size:12px; text-transform:none}
+  code,.mono{font-family:"Cascadia Code",Consolas,Menlo,monospace; font-size:12.3px}
+  .ev{border:1px solid var(--line); border-radius:12px; padding:13px 14px; margin-bottom:12px; background:var(--panel-2)}
+  .ev h4{margin:0 0 6px; font-size:14px; display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  .chip{font-size:11px; padding:2px 8px; border-radius:999px; background:rgba(110,168,255,.14);
+        color:var(--accent); border:1px solid rgba(110,168,255,.3)}
+  .chip.score{background:rgba(57,217,138,.14); color:var(--ok); border-color:rgba(57,217,138,.3)}
+  .chip.page{background:rgba(139,124,255,.14); color:#b3a8ff; border-color:rgba(139,124,255,.3)}
+  .ev pre{margin:8px 0 0; white-space:pre-wrap; word-break:break-word; color:#dfe7f7; font-size:12.8px}
+  .meta{font-size:11.5px; color:var(--muted); margin-top:7px; word-break:break-all}
+  .notes{margin:10px 0 0; padding:10px 12px; border-left:3px solid var(--warn); border-radius:8px;
+         background:rgba(255,192,70,.08); font-size:12.5px; color:#ffd98a}
+  .notes.err{border-color:var(--err); background:rgba(255,107,107,.09); color:#ffb3b3}
+  .empty{color:var(--muted); text-align:center; padding:26px; font-size:13px}
+  .flow{display:flex; gap:6px; flex-wrap:wrap; margin:4px 0 0}
+  .flow span{font-size:11.5px; padding:3px 9px; border-radius:999px; background:var(--panel-2);
+             border:1px solid var(--line); color:var(--muted)}
+  .flow span.on{color:var(--accent); border-color:rgba(110,168,255,.45)}
+  details{margin-top:10px}
+  summary{cursor:pointer; color:var(--muted); font-size:12.5px}
+  .busy{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.35);
+        border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .foot{margin-top:22px; color:var(--muted); font-size:12px; text-align:center}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <svg class="logo" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <rect x="2" y="2" width="44" height="44" rx="12" fill="url(#g)"/>
+      <path d="M14 33V15m0 9h6l7-9m-7 9 8 9" stroke="#08101f" stroke-width="3"
+            stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="30.5" cy="24" r="3.2" fill="#08101f"/>
+      <defs><linearGradient id="g" x1="0" y1="0" x2="48" y2="48">
+        <stop stop-color="#6ea8ff"/><stop offset="1" stop-color="#8b7cff"/>
+      </linearGradient></defs>
+    </svg>
+    <div class="brand">
+      <h1>Knowledge Fabric · 控制台</h1>
+      <p>上传文档即建库 · 检索即证据（含字符级引用）· 全链路优雅降级</p>
+    </div>
+    <div class="spacer"></div>
+    <div class="pills">
+      <span class="pill"><i class="dot" id="dot-ingest"></i>摄入 <b class="mono" id="lbl-ingest">—</b></span>
+      <span class="pill"><i class="dot" id="dot-retrieve"></i>检索 <b class="mono" id="lbl-retrieve">—</b></span>
+    </div>
+  </header>
+
+  <div class="card settings">
+    <div>
+      <label>摄入服务地址（kf-ingest）</label>
+      <input id="base-ingest" value="http://127.0.0.1:8083" spellcheck="false" />
+    </div>
+    <div>
+      <label>检索服务地址（kf-retrieve）</label>
+      <input id="base-retrieve" value="http://127.0.0.1:8082" spellcheck="false" />
+    </div>
+    <div>
+      <label>租户 tenant / 知识库 kb</label>
+      <div class="row" style="gap:8px">
+        <input id="tenant" value="acme" spellcheck="false" style="flex:1;min-width:90px" />
+        <input id="kb" value="demo" spellcheck="false" style="flex:1;min-width:90px" />
+      </div>
+    </div>
+    <div class="row">
+      <button class="ghost" id="btn-check" style="flex:1">检测连接</button>
+    </div>
+  </div>
+  <p class="hint" style="margin:-6px 0 14px">
+    提示：地址与租户/库会记住（localStorage）。服务未起时页面仍可用，仅显示「未连接」，不会报错。
+  </p>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="ingest">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0L8 8m4-4 4 4"/>
+        <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>摄入文档
+    </div>
+    <div class="tab" data-tab="docs">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h6l2 2h6a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/>
+        <path d="M9 12h6M9 16h4"/></svg>文档库
+    </div>
+    <div class="tab" data-tab="search">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg>检索问答
+    </div>
+  </div>
+
+  <!-- ========== 摄入 ========== -->
+  <section class="card panel" id="panel-ingest">
+    <div class="grid">
+      <div>
+        <label>文档（PDF / Markdown）</label>
+        <div class="drop" id="drop">
+          <div id="dropText">把 PDF / Markdown 拖到这里，或 <strong>点击选择文件</strong></div>
+          <input type="file" id="file" accept=".pdf,.md,.markdown,.mdown" hidden />
+          <div class="hint">单文件上传：PDF 走 PyMuPDF（版面 / 标题 / 表格 / 页眉页脚），
+            Markdown 走结构化解析（标题 / 列表 / 表格 / 围栏代码；无分页，页码恒为 0）</div>
+        </div>
+      </div>
+      <div>
+        <label>文档 ID（留空取文件名）</label>
+        <input id="doc-id" placeholder="manual_v1" spellcheck="false" />
+        <label style="margin-top:10px">版本号 version</label>
+        <input id="version" type="number" value="1" min="1" />
+        <label style="margin-top:10px">语言 lang（留空自动判定）</label>
+        <input id="lang" placeholder="zh / en" spellcheck="false" />
+      </div>
+      <div>
+        <label>文档类型 doc_type（影响切片路由）</label>
+        <select id="doc-type">
+          <option value="">自动判定</option>
+          <option value="manual">manual 手册</option>
+          <option value="contract">contract 合同</option>
+          <option value="regulation">regulation 法规</option>
+          <option value="code">code 代码</option>
+        </select>
+        <label style="margin-top:10px">切片策略（留空按文档特征自动路由）</label>
+        <select id="strategy">
+          <option value="">自动路由（推荐）</option>
+          <option value="doc_structured">doc_structured 结构化递归</option>
+          <option value="clause_atomic">clause_atomic 条款原子</option>
+          <option value="code_aware">code_aware 代码语法</option>
+          <option value="semantic">semantic 语义断点</option>
+          <option value="visual_page">visual_page 页级视觉</option>
+          <option value="table_centric">table_centric 表格中心</option>
+        </select>
+      </div>
+      <div>
+        <label>运行选项</label>
+        <div class="row" style="gap:16px; align-items:center">
+          <label style="display:flex;gap:7px;align-items:center;margin:0;color:var(--text)">
+            <input type="checkbox" id="dry-run" /> 预览（dry-run，不落库不触网）
+          </label>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label style="display:flex;gap:7px;align-items:center;margin:0;color:var(--text)">
+            <input type="checkbox" id="enrich" checked /> 生成类增强（需 vLLM，缺失自动跳过）
+          </label>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label style="display:flex;gap:7px;align-items:center;margin:0;color:var(--text)">
+            <input type="checkbox" id="graph" /> 建图 GraphRAG（--graph，同时开启该库图检索）
+          </label>
+        </div>
+        <div style="margin-top:8px">
+          <label>块级 ACL（可选；逗号分隔 <span class="mono">type:id</span>，<span class="mono">!type:id</span> 为 deny）</label>
+          <input id="acl" spellcheck="false" placeholder="如 user:alice,group:eng,!user:u9（留空 = 公开）" />
+        </div>
+        <div class="flow" id="flow" style="margin-top:12px"></div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:16px">
+      <button id="btn-ingest">上传并摄入</button>
+      <span id="ingest-status" class="hint"></span>
+    </div>
+
+    <div id="ingest-result"></div>
+
+    <hr style="border:none;border-top:1px solid var(--line);margin:22px 0 16px" />
+
+    <div>
+      <b>目录批量摄入</b>
+      <span class="hint">（一个公司很多文档时的入口：填<b>服务端本机</b>的目录路径，逐个摄入其中的 PDF / Markdown）</span>
+      <div class="grid" style="margin-top:10px">
+        <div style="grid-column:span 2">
+          <label>目录路径（服务器上的绝对路径）</label>
+          <input id="dir-path" spellcheck="false" placeholder="E:\docs\公司知识库" />
+        </div>
+        <div>
+          <label>文件名过滤 match（可选）</label>
+          <input id="dir-match" spellcheck="false" placeholder="如 灯塔（先小范围试跑）" />
+        </div>
+        <div>
+          <label>选项</label>
+          <div class="row" style="gap:16px;align-items:center">
+            <label style="display:flex;gap:7px;align-items:center;margin:0;color:var(--text)">
+              <input type="checkbox" id="dir-recursive" /> 递归子目录
+            </label>
+            <label style="display:flex;gap:7px;align-items:center;margin:0;color:var(--text)">
+              <input type="checkbox" id="dir-dry" /> 预览（dry-run）
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button id="btn-ingest-dir">扫描目录并批量摄入</button>
+        <span id="dir-status" class="hint"></span>
+      </div>
+      <div class="hint" style="margin-top:8px">
+        租户 / 库 / 版本 / 语言 / 策略 / 建图 / ACL 沿用上方单文件区的设置；
+        <b>doc_id 由文件名派生</b>（保证多文档互不覆盖）。不支持的格式（.docx/.txt/.jpg 等）
+        会在结果里<b>列出</b>，不会被静默跳过。
+      </div>
+      <div id="dir-result"></div>
+    </div>
+  </section>
+
+  <!-- ========== 文档库 ========== -->
+  <section class="card panel" id="panel-docs" hidden>
+    <div class="row" style="justify-content:space-between">
+      <div><b>文档库</b> <span class="hint">（按租户 / 库列出，块数取当前版本的活跃块）</span></div>
+      <button class="ghost" id="btn-refresh-docs">刷新</button>
+    </div>
+    <div id="docs-result" style="margin-top:12px"></div>
+  </section>
+
+  <!-- ========== 检索 ========== -->
+  <section class="card panel" id="panel-search" hidden>
+    <div class="grid">
+      <div style="grid-column:1/-1">
+        <label>查询语句</label>
+        <textarea id="query" rows="2" placeholder="例如：密码长度不得少于多少位？">产品交付后的保修期是多久？</textarea>
+      </div>
+      <div>
+        <label>检索档位 profile（读自 /v1/profiles）</label>
+        <select id="profile"><option value="hybrid_rerank">hybrid_rerank</option></select>
+      </div>
+      <div>
+        <label>召回条数 top_k</label>
+        <input id="top-k" type="number" value="10" min="1" max="100" />
+      </div>
+      <div>
+        <label>上下文预算 max_context_tokens</label>
+        <input id="max-tokens" type="number" value="8000" min="256" step="256" />
+      </div>
+      <div class="row">
+        <button id="btn-search" style="flex:1">检索</button>
+        <button class="ghost" id="btn-profiles">刷新档位</button>
+      </div>
+      <div>
+        <label>访问主体 principal（可选；逗号分隔 <span class="mono">type:id</span>，如 <span class="mono">user:alice,group:eng</span>）</label>
+        <input id="principal" spellcheck="false" placeholder="留空 = 不做 ACL 过滤" />
+      </div>
+      <div>
+        <label><input type="checkbox" id="graph-enabled" /> 启用 Graph 通道（graph_enabled）</label>
+      </div>
+      <p class="foot" style="margin:8px 0 0">提示：<span class="mono">exact_lookup</span> 走结构化精确过滤，<span class="mono">graph_global</span> 走 GraphRAG（需该库摄入时开过 <span class="mono">--graph</span>，且上面勾选启用）。</p>
+    </div>
+    <div id="search-result" style="margin-top:16px"></div>
+  </section>
+
+  <p class="foot">Knowledge Fabric · 默认 evidence-only：只给证据与引用，由上层 agent 的 LLM 组织答案</p>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const LS = "kf.console.";
+
+/* ---------- 记忆地址与租户/库 ---------- */
+["base-ingest","base-retrieve","tenant","kb"].forEach((k) => {
+  const saved = localStorage.getItem(LS + k);
+  if (saved) $(k).value = saved;
+  $(k).addEventListener("change", () => {
+    localStorage.setItem(LS + k, $(k).value.trim());
+    if (k.startsWith("base")) checkHealth();
+  });
+});
+
+const baseIngest   = () => $("base-ingest").value.trim().replace(/\/+$/, "");
+const baseRetrieve = () => $("base-retrieve").value.trim().replace(/\/+$/, "");
+
+async function req(base, path, opts) {
+  const res = await fetch(base + path, opts);
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (e) { data = { raw: text }; }
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${path} :: ${(data && (data.detail || data.raw)) || text}`);
+  return data;
+}
+
+/* ---------- 连接检测 ---------- */
+async function checkHealth() {
+  for (const name of ["ingest", "retrieve"]) {
+    const dot = $("dot-" + name), lbl = $("lbl-" + name);
+    const base = name === "ingest" ? baseIngest() : baseRetrieve();
+    try {
+      const res = await fetch(base + "/health", { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      dot.className = "dot ok"; lbl.textContent = "已连接";
+    } catch (e) {
+      dot.className = "dot err"; lbl.textContent = "未连接";
+    }
+  }
+}
+$("btn-check").onclick = checkHealth;
+
+/* ---------- 标签页 ---------- */
+document.querySelectorAll(".tab").forEach((tab) => {
+  tab.onclick = () => {
+    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tab));
+    ["ingest","docs","search"].forEach((n) => { $("panel-" + n).hidden = (n !== tab.dataset.tab); });
+    if (tab.dataset.tab === "docs") loadDocs();
+    if (tab.dataset.tab === "search") loadProfiles();
+  };
+});
+
+/* ---------- 摄入 ---------- */
+const drop = $("drop");
+drop.onclick = () => $("file").click();
+["dragenter","dragover"].forEach((ev) => drop.addEventListener(ev, (e) => {
+  e.preventDefault(); drop.classList.add("hot");
+}));
+["dragleave","drop"].forEach((ev) => drop.addEventListener(ev, (e) => {
+  e.preventDefault(); drop.classList.remove("hot");
+}));
+drop.addEventListener("drop", (e) => {
+  if (e.dataTransfer.files.length) { $("file").files = e.dataTransfer.files; showFile(); }
+});
+$("file").onchange = showFile;
+
+function showFile() {
+  const f = $("file").files[0];
+  $("dropText").innerHTML = f
+    ? `已选择 <strong>${escapeHtml(f.name)}</strong> · ${(f.size/1024).toFixed(1)} KB`
+    : "把 PDF 拖到这里，或 <strong>点击选择文件</strong>";
+  if (f && !$("doc-id").value) $("doc-id").value = f.name.replace(/\.[^.]+$/, "");
+}
+
+const STAGES = ["解析 parse","清洗 clean","切片 chunk","增强 enrich","嵌入 embed","索引 index"];
+function renderFlow() {
+  const dry = $("dry-run").checked;
+  $("flow").innerHTML = STAGES
+    .filter((s) => !(dry && (s.includes("embed") || s.includes("index"))))
+    .map((s) => `<span>${s}</span>`).join("");
+}
+$("dry-run").onchange = renderFlow;
+renderFlow();
+
+$("btn-ingest").onclick = async () => {
+  const f = $("file").files[0];
+  if (!f) { alert("请先选择要摄入的文档（PDF / Markdown）"); return; }
+  const btn = $("btn-ingest");
+  btn.disabled = true;
+  $("ingest-status").innerHTML = '<span class="busy"></span> 摄入中…（首次启动会拉取模型权重，可能较慢）';
+  $("ingest-result").innerHTML = "";
+  try {
+    const fd = new FormData();
+    fd.append("file", f);
+    fd.append("tenant", $("tenant").value.trim() || "default");
+    fd.append("kb", $("kb").value.trim() || "default");
+    fd.append("doc_id", $("doc-id").value.trim());
+    fd.append("version", $("version").value || "1");
+    fd.append("lang", $("lang").value.trim());
+    fd.append("doc_type", $("doc-type").value);
+    fd.append("strategy", $("strategy").value);
+    fd.append("dry_run", $("dry-run").checked ? "true" : "false");
+    fd.append("enrich", $("enrich").checked ? "true" : "false");
+    fd.append("graph", $("graph").checked ? "true" : "false");
+    fd.append("acl", $("acl").value.trim());
+    const data = await req(baseIngest(), "/v1/ingest", { method: "POST", body: fd });
+    renderIngest(data);
+    $("ingest-status").textContent = "";
+  } catch (e) {
+    $("ingest-status").textContent = "";
+    $("ingest-result").innerHTML =
+      `<div class="notes err">摄入请求失败：${escapeHtml(e.message)}<br>
+       请确认 kf-ingest 已启动（默认 8083）：<span class="mono">python -m uvicorn kf_ingest.app:app --port 8083</span></div>`;
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+function renderIngest(d) {
+  const c = d.counts || {}, cl = d.cleaning || {}, st = d.stages || {};
+  const card = (v, k) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`;
+  let html = `<div class="stats">
+      ${card(c.parents || 0, "父块 parent")}
+      ${card(c.children || 0, "子块 child")}
+      ${card(c.embedded || 0, "已嵌入 embedded")}
+      ${card(c.indexed || 0, "已索引 Qdrant")}
+      ${card(cl.removed_blocks || 0, "清洗移除块")}
+      ${card(cl.deduped_blocks || 0, "去重块")}
+    </div>
+    <div class="meta">文档 <b>${escapeHtml(d.doc_id)}</b> v${d.version} ·
+      语言 ${d.lang || "—"} · 策略 <span class="chip">${escapeHtml(d.strategy || "—")}</span> ·
+      集合 <span class="mono">${escapeHtml(d.collection || "")}</span>${d.dry_run ? ' · <span class="chip">dry-run 未落库</span>' : ""}</div>`;
+
+  const cs = st.chunk || {};
+  if (cs && Object.keys(cs).length) {
+    html += `<div class="meta">切片：子块 ${cs.children ?? "—"} · 平均 ${cs.avg_child_tokens ?? "—"} token ·
+      最大 ${cs.max_child_tokens ?? "—"} · 原子子块 ${cs.atomic_children ?? "—"} ·
+      路由特征 ${cs.features ? escapeHtml(JSON.stringify(cs.features)) : "—"}</div>`;
+  }
+  const idx = st.index || {};
+  if (idx && (idx.notes || []).length) {
+    html += `<div class="notes">落库提示：${idx.notes.map(escapeHtml).join("；")}</div>`;
+  }
+  if ((d.notes || []).length) html += `<div class="notes">${d.notes.map(escapeHtml).join("；")}</div>`;
+  if ((d.errors || []).length) {
+    html += `<div class="notes err">错误：${d.errors.map(escapeHtml).join("；")}</div>`;
+  } else if (!d.dry_run) {
+    html += `<div class="notes" style="border-color:var(--ok);background:rgba(57,217,138,.08);color:#9ef0c4">
+      摄入完成。可切到「检索问答」立即可查（增量写入无需重启服务）。</div>`;
+  }
+  html += `<details><summary>查看完整摘要 JSON</summary><pre class="mono">${
+    escapeHtml(JSON.stringify(d, null, 2))}</pre></details>`;
+  $("ingest-result").innerHTML = html;
+}
+
+/* ---------- 目录批量摄入 ---------- */
+$("btn-ingest-dir").onclick = async () => {
+  const dir = $("dir-path").value.trim();
+  if (!dir) { alert("请填写服务端本机的目录路径"); return; }
+  const btn = $("btn-ingest-dir");
+  btn.disabled = true;
+  $("dir-status").innerHTML = '<span class="busy"></span> 扫描并逐个摄入中…';
+  $("dir-result").innerHTML = "";
+  try {
+    const payload = {
+      dir: dir,
+      tenant: $("tenant").value.trim() || "default",
+      kb: $("kb").value.trim() || "default",
+      version: parseInt($("version").value || "1", 10),
+      lang: $("lang").value.trim(),
+      doc_type: $("doc-type").value,
+      strategy: $("strategy").value,
+      dry_run: $("dir-dry").checked,
+      enrich: $("enrich").checked,
+      graph: $("graph").checked,
+      acl: $("acl").value.trim(),
+      recursive: $("dir-recursive").checked,
+      match: $("dir-match").value.trim()
+    };
+    const data = await req(baseIngest(), "/v1/ingest-dir", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    renderDirIngest(data);
+    $("dir-status").textContent = "";
+  } catch (e) {
+    $("dir-status").textContent = "";
+    $("dir-result").innerHTML =
+      `<div class="notes err">目录摄入失败：${escapeHtml(e.message)}<br>
+       请确认目录存在于<b>服务端本机</b>，且 kf-ingest 已启动（默认 8083）。</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+function renderDirIngest(d) {
+  const docs = d.documents || [];
+  const skipped = d.skipped_unsupported || [];
+  let html = `<div class="stats">
+      ${stat(d.processed || 0, "扫描到受支持文档")}
+      ${stat(d.succeeded || 0, "成功")}
+      ${stat(d.failed || 0, "失败")}
+      ${stat(skipped.length, "跳过(不支持格式)")}
+    </div>
+    <div class="meta">目录 <span class="mono">${escapeHtml(d.dir || "")}</span> ·
+      租户 ${escapeHtml(d.tenant || "")} / 库 ${escapeHtml(d.kb || "")} ·
+      集合 <span class="mono">${escapeHtml(d.collection || "")}</span>${d.dry_run ? ' · <span class="chip">dry-run 未落库</span>' : ""}</div>`;
+
+  if (docs.length) {
+    html += `<table><thead><tr><th>文档（doc_id = 文件名）</th><th>格式</th><th>策略</th>
+      <th>父块</th><th>子块</th><th>已索引</th><th>状态</th></tr></thead><tbody>`;
+    for (const doc of docs) {
+      const p = (doc.stages || {}).parse || {};
+      const c = doc.counts || {};
+      html += `<tr>
+        <td>${escapeHtml(doc.doc_id)}</td>
+        <td class="mono">${escapeHtml(p.scanner || "—")}</td>
+        <td><span class="chip">${escapeHtml(doc.strategy || "—")}</span></td>
+        <td>${c.parents ?? 0}</td>
+        <td>${c.children ?? 0}</td>
+        <td>${c.indexed ?? 0}</td>
+        <td>${doc.ok ? "✅" : "❌"}</td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+  } else if (!d.dry_run) {
+    html += `<div class="empty">没有摄入任何文档。</div>`;
+  }
+
+  if (skipped.length) {
+    html += `<div class="notes">跳过 ${skipped.length} 个不支持的格式（当前解析器支持 PDF / Markdown）：
+      <span class="mono">${skipped.map((p) => escapeHtml(p.split(/[\\/]/).pop())).join("、")}</span></div>`;
+  }
+  if ((d.notes || []).length) {
+    html += `<div class="notes">${d.notes.map(escapeHtml).join("；")}</div>`;
+  }
+  html += `<details><summary>查看完整摘要 JSON</summary><pre class="mono">${
+    escapeHtml(JSON.stringify(d, null, 2))}</pre></details>`;
+  $("dir-result").innerHTML = html;
+}
+
+function stat(v, k) {
+  return `<div class="stat"><b>${v}</b><span>${k}</span></div>`;
+}
+
+/* ---------- 文档库 ---------- */
+$("btn-refresh-docs").onclick = loadDocs;
+async function loadDocs() {
+  const box = $("docs-result");
+  box.innerHTML = '<div class="empty"><span class="busy"></span> 读取中…</div>';
+  try {
+    const q = new URLSearchParams({
+      tenant: $("tenant").value.trim() || "default",
+      kb: $("kb").value.trim(), limit: "100"
+    });
+    const data = await req(baseIngest(), "/v1/documents?" + q.toString());
+    const docs = data.documents || [];
+    if (!docs.length) {
+      box.innerHTML = `<div class="empty">暂无文档${(data.notes || []).length
+        ? "：" + escapeHtml(data.notes.join("；")) : "（先上传一份 PDF）"}</div>`;
+      return;
+    }
+    box.innerHTML = `<table><thead><tr>
+        <th>doc_id</th><th>库</th><th>标题</th><th>语言</th><th>类型</th>
+        <th>当前版本</th><th>活跃块</th><th>来源</th><th>更新时间</th></tr></thead><tbody>
+      ${docs.map((d) => `<tr>
+        <td class="mono">${escapeHtml(d.doc_id)}</td>
+        <td>${escapeHtml(d.kb || "")}</td>
+        <td>${escapeHtml(d.title || "")}</td>
+        <td>${escapeHtml(d.lang || "—")}</td>
+        <td>${escapeHtml(d.doc_type || "—")}</td>
+        <td>v${d.current_version}</td>
+        <td>${d.active_chunks}</td>
+        <td class="mono">${escapeHtml(d.source_uri || "")}</td>
+        <td class="mono">${escapeHtml((d.updated_at || "").replace("T"," ").slice(0,19))}</td>
+      </tr>`).join("")}</tbody></table>`;
+  } catch (e) {
+    box.innerHTML = `<div class="notes err">读取失败：${escapeHtml(e.message)}<br>
+      请确认 kf-ingest 已启动并配置了 DATABASE_URL。</div>`;
+  }
+}
+
+/* ---------- 检索 ---------- */
+$("btn-profiles").onclick = loadProfiles;
+async function loadProfiles() {
+  try {
+    const data = await req(baseRetrieve(), "/v1/profiles");
+    const list = Array.isArray(data) ? data : (data.profiles || []);
+    const safe = data.safe_default || "hybrid_rerank";
+    const sel = $("profile");
+    sel.innerHTML = list.map((p) =>
+      `<option value="${escapeHtml(p)}"${p === safe ? " selected" : ""}>${escapeHtml(p)}${p === safe ? "（安全默认）" : ""}</option>`
+    ).join("");
+    if (list.length) $("btn-profiles").textContent = `${list.length} 档`;
+  } catch (e) {
+    $("btn-profiles").textContent = "档位不可用";
+  }
+}
+
+$("btn-search").onclick = doSearch;
+async function doSearch() {
+  const q = $("query").value.trim();
+  if (!q) { alert("请输入查询语句"); return; }
+  const btn = $("btn-search");
+  btn.disabled = true;
+  $("search-result").innerHTML = '<div class="empty"><span class="busy"></span> 检索中…</div>';
+  const t0 = performance.now();
+  try {
+    const body = {
+      query: q,
+      profile: $("profile").value,
+      tenant: $("tenant").value.trim() || "default",
+      kb: $("kb").value.trim() || "default",
+      top_k: parseInt($("top-k").value, 10) || 10,
+      max_context_tokens: parseInt($("max-tokens").value, 10) || 8000,
+      graph_enabled: $("graph-enabled").checked
+    };
+    const principal = ($("principal").value || "").split(",")
+      .map((s) => s.trim()).filter(Boolean);
+    if (principal.length) body.principal = principal;
+    const data = await req(baseRetrieve(), "/v1/search", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body)
+    });
+    renderSearch(data, performance.now() - t0);
+  } catch (e) {
+    $("search-result").innerHTML = `<div class="notes err">检索失败：${escapeHtml(e.message)}<br>
+      请确认 kf-retrieve 已启动（默认 8082）。</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderSearch(d, ms) {
+  const ev = d.evidence || [], cites = d.citations || [], tr = d.trace || {};
+  const ch = tr.channels || {};
+  const chText = Object.keys(ch).length
+    ? Object.entries(ch).map(([k, v]) => `${k}:${v}`).join(" ") : "无通道命中";
+
+  let html = `<div class="meta">耗时 ${ms.toFixed(0)} ms ·
+      档位 <span class="chip">${escapeHtml(tr.profile || "—")}</span> ·
+      通道 <span class="chip">${escapeHtml(chText)}</span> ·
+      融合 ${escapeHtml(tr.fusion || "—")} · 重排 ${tr.reranked ? "已启用" : "未启用（无候选或端点未配置）"} ·
+      重排耗时 ${d.rerank_ms || 0} ms · 查询语言 ${escapeHtml(tr.lang || "—")} ·
+      集合 <span class="mono">${escapeHtml(tr.collection || "")}</span> ·
+      上下文 token ${tr.tokens_used || 0}</div>`;
+
+  if (d.refused || tr.refused) {
+    html += `<div class="notes">按档位拒答：最高分低于答案可达阈值（top_score=${
+      escapeHtml(String(d.top_score ?? "—"))}）</div>`;
+  }
+  if ((tr.notes || []).length) {
+    html += `<div class="notes">降级/提示：${tr.notes.map(escapeHtml).join("；")}</div>`;
+  }
+  const gtr = tr.graph || {}, str = tr.structured || {};
+  const extras = [];
+  if (tr.agentic_stop) extras.push(`Agentic 轮数 ${tr.agentic_rounds ?? 0}·停止 ${tr.agentic_stop}`);
+  if (gtr.enabled) extras.push(`Graph 命中实体 ${(gtr.entities_matched || []).join("/") || "无"}·社区 ${gtr.communities_used || 0}·${gtr.hops || 0} 跳`);
+  else if (gtr.hops !== undefined) extras.push("Graph 未启用");
+  if (str.matched !== undefined) extras.push(`结构化命中 ${str.matched}`);
+  else if (str.skipped) extras.push(`结构化跳过：${str.skipped}`);
+  if (extras.length) html += `<div class="meta">${extras.map(escapeHtml).join(" · ")}</div>`;
+
+  if (!ev.length) {
+    html += `<div class="empty">没有召回任何证据。请确认已摄入文档，且 租户/库 与摄入时一致（集合名 <span class="mono">kf_&lt;tenant&gt;_&lt;kb&gt;</span>）。</div>`;
+    $("search-result").innerHTML = html;
+    return;
+  }
+
+  html += `<h3 style="margin:18px 0 10px;font-size:14.5px">证据 ${ev.length} 条（父块回填后按「首尾强、中间弱」排序）</h3>`;
+  html += ev.map((e, i) => {
+    const range = (e.char_range && e.char_range.length === 2)
+      ? `字符 ${e.char_range[0]}–${e.char_range[1]}` : "无字符偏移";
+    return `<div class="ev">
+      <h4>
+        <span class="chip score">#${i + 1} ${Number(e.score || 0).toFixed(4)}</span>
+        <span class="chip page">第 ${e.page ?? "?"} 页</span>
+        ${e.chunk_type ? `<span class="chip">${escapeHtml(e.chunk_type)}</span>` : ""}
+        ${e.retrieval_channel ? `<span class="chip">${escapeHtml(e.retrieval_channel)} 通道</span>` : ""}
+        ${e.parent_chunk_id ? `<span class="chip">父块回填</span>` : ""}
+      </h4>
+      <pre>${escapeHtml(e.content || "")}</pre>
+      <div class="meta">
+        命中子块 <span class="mono">${escapeHtml(e.chunk_id || "")}</span>
+        ${e.offset_chunk_id && e.offset_chunk_id !== e.chunk_id
+          ? ` · 偏移归属 <span class="mono">${escapeHtml(e.offset_chunk_id)}</span>` : ""}
+        ${e.parent_chunk_id ? ` · 内容取自父块 <span class="mono">${escapeHtml(e.parent_chunk_id)}</span>` : ""}
+        <br/>引用定位：<b>${range}</b>
+        ${e.source_uri ? ` · 来源 <span class="mono">${escapeHtml(e.source_uri)}</span>` : ""}
+      </div></div>`;
+  }).join("");
+
+  if (cites.length) {
+    html += `<h3 style="margin:18px 0 10px;font-size:14.5px">引用 ${cites.length} 条</h3>
+      <table><thead><tr><th>doc_id</th><th>页</th><th>章节</th><th>字符区间</th><th>来源</th></tr></thead><tbody>
+      ${cites.map((c) => `<tr>
+        <td class="mono">${escapeHtml(c.doc_id || "")}</td>
+        <td>${c.page ?? "?"}</td>
+        <td>${escapeHtml(c.section || "—")}</td>
+        <td class="mono">${c.char_range ? c.char_range.join("–") : "—"}</td>
+        <td class="mono">${escapeHtml(c.url || "—")}</td>
+      </tr>`).join("")}</tbody></table>`;
+  }
+
+  html += `<details><summary>查看 trace（阶段耗时 / 通道 / 降级口径）</summary>
+    <pre class="mono">${escapeHtml(JSON.stringify(tr, null, 2))}</pre></details>`;
+  $("search-result").innerHTML = html;
+}
+
+/* ---------- 工具 ---------- */
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (m) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+}
+
+checkHealth();
+loadProfiles();
+</script>
+</body>
+</html>

@@ -1,0 +1,92 @@
+# 切片策略引擎（Chunking Strategy Engine）
+# 没有"一个最优切片方案"：按文档类型路由，参数由自查询 recall 评测驱动（scripts/chunk_eval.py）。
+# 默认组合（四段式）：layout_aware → structural_recursive → parent_child → contextual
+
+version: 1
+default_strategy: doc_structured
+
+defaults:
+  child_tokens: 320            # 子块 200–400
+  parent_tokens: 1600          # 父块 1200–2000
+  overlap_ratio: 0.12          # 10–15%，仅同级块
+  tokenizer: BAAI/bge-m3       # 必须以实际嵌入模型 tokenizer 计数，勿用字符数
+  respect_boundaries: [section, paragraph, sentence]
+  atomic_types: [table, code, formula]   # 不跨块切分
+  contextual_prefix: true
+  language_aware_sentence_split: true    # 中文/日文/泰文专用分句器
+
+# 语言相关：分句器选择
+sentence_splitters:
+  zh: pysbd_zh                # 。！？ + 中文分词
+  ja: pysbd_ja
+  th: pysbd_th
+  default: pysbd_generic
+  fallback: icu
+
+strategies:
+  # 有清晰章节结构（手册 / 规范 / 政策）—— 默认
+  doc_structured:
+    pipeline: [layout_aware, structural_recursive, parent_child, contextual]
+    match: {has_section_hierarchy: true}
+    params: {child_tokens: 320, parent_tokens: 1600, overlap_ratio: 0.12}
+
+  # 无结构长文（纪要 / 访谈 / 邮件串）
+  semantic:
+    pipeline: [semantic_split, parent_child, contextual]
+    match: {has_section_hierarchy: false, prose: true}
+    params:
+      breakpoint_percentile: 0.85      # 相邻句嵌入相似度断点
+      min_child_tokens: 200
+      max_child_tokens: 400
+
+  # 表格密集（产品参数 / 报价单）
+  table_centric:
+    pipeline: [layout_aware, table_atomic, structural_recursive, contextual]
+    match: {table_density: high}
+    params:
+      table_atomic: true
+      repeat_header_per_group: true
+      group_rows: 20                 # 大表按行组切
+      emit_structured: true          # 同时产出结构化字段
+
+  # 法规 / 合同（要求逐条引用）
+  clause_atomic:
+    pipeline: [layout_aware, clause_split, contextual]
+    match: {doc_type: [regulation, contract]}
+    # 单条即原子：上限给足，避免一条完整条款被动按句子拆开（破坏「逐条引用」）
+    params: {atomic_unit: clause, keep_numbering: true, max_child_tokens: 800}
+
+  # 图文混排 / 扫描件
+  visual_page:
+    pipeline: [layout_aware, visual_page_embed]
+    match: {scanned: true, figure_heavy: true}
+    params: {model: colpali, page_level: true}
+
+  # 代码 / 日志
+  code_aware:
+    pipeline: [syntax_split, contextual]
+    match: {doc_type: code}
+    # 单个函数即原子：上限给足，避免长函数（含注释）被动按句子拆开
+    params: {unit: function, keep_indent: true, max_child_tokens: 1200}
+
+# 路由规则（按顺序匹配，首个命中生效）
+routing:
+  - if: {scanned: true}
+    use: visual_page
+  - if: {doc_type: code}
+    use: code_aware
+  - if: {doc_type_in: [regulation, contract]}
+    use: clause_atomic
+  - if: {table_density: high}
+    use: table_centric
+  - if: {has_section_hierarchy: true}
+    use: doc_structured
+  - default: semantic
+
+# 评测驱动选参
+evaluation:
+  method: self_query_recall        # 同文件自查询：从每块反向生成问题，测其能否被召回
+  questions_per_chunk: 3
+  metrics: [recall@10, recall@20, ndcg@10]
+  candidates: [doc_structured, semantic, table_centric]   # 对候选策略做 A/B
+  min_improvement: 0.03            # 收益不足 3% 时保持现状，避免无谓变更

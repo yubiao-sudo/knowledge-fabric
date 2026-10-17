@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowledge-fabric.local/schemas/chunk.schema.json",
+  "title": "Chunk",
+  "description": "切片记录契约。ACL 下沉到 chunk 级；provenance 保证清洗可逆与引用回溯。",
+  "type": "object",
+  "required": [
+    "chunk_id", "tenant_id", "kb_id", "doc_id", "version",
+    "content", "lang", "acl", "provenance", "status", "created_at"
+  ],
+  "properties": {
+    "chunk_id": { "type": "string", "description": "全局唯一，建议 kb_id + 内容哈希派生" },
+    "tenant_id": { "type": "string" },
+    "workspace_id": { "type": ["string", "null"] },
+    "kb_id": { "type": "string" },
+    "doc_id": { "type": "string" },
+    "version": { "type": "integer", "description": "文档版本号，增量更新用" },
+    "content_hash": { "type": "string", "description": "sha256(content)，用于精确去重与幂等" },
+
+    "parent_chunk_id": {
+      "type": ["string", "null"],
+      "description": "父子块关联：子块用于检索，父块用于生成回填"
+    },
+    "chunk_type": {
+      "enum": ["text", "table", "code", "formula", "figure", "clause", "question"],
+      "description": "question = 假设性问题增强块"
+    },
+    "content": { "type": "string" },
+    "context_prefix": {
+      "type": ["string", "null"],
+      "description": "上下文增强生成的前缀（1–2 句）"
+    },
+
+    "lang": { "type": "string", "description": "BCP-47，如 zh-CN / en / ja，用于分语言稀疏索引路由" },
+    "section_path": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "章节层级路径，供引用展示与结构感知检索"
+    },
+    "position": {
+      "type": "object",
+      "properties": {
+        "page": { "type": "integer" },
+        "order": { "type": "integer", "description": "文档内阅读顺序" }
+      }
+    },
+
+    "provenance": {
+      "type": "object",
+      "description": "清洗可逆：映射回原始文档位置，引用与审计的唯一依据",
+      "required": ["source_uri", "page", "char_start", "char_end"],
+      "properties": {
+        "source_uri": { "type": "string", "description": "原始文件对象存储路径" },
+        "page": { "type": "integer" },
+        "char_start": { "type": "integer" },
+        "char_end": { "type": "integer" },
+        "bbox": {
+          "type": ["array", "null"],
+          "items": { "type": "number" },
+          "description": "可选：版面坐标 [x0,y0,x1,y1]"
+        },
+        "cleaning_ops": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "对该片段做过的清洗操作，支持一键还原原文"
+        }
+      }
+    },
+
+    "acl": {
+      "type": "array",
+      "description": "检索侧强制『相关性 ∩ 可见性』",
+      "items": {
+        "type": "object",
+        "required": ["principal_type", "principal_id", "effect"],
+        "properties": {
+          "principal_type": { "enum": ["user", "group", "role", "tenant_public"] },
+          "principal_id": { "type": "string" },
+          "effect": { "enum": ["allow", "deny"] }
+        }
+      }
+    },
+
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string" },
+          "type": { "type": "string" },
+          "score": { "type": "number" }
+        }
+      }
+    },
+    "keywords": { "type": "array", "items": { "type": "string" } },
+
+    "structured": {
+      "type": ["object", "null"],
+      "description": "结构化双轨字段（产品 SKU / 价格 / 规格），走 SQL 精确检索",
+      "properties": {
+        "schema_id": { "type": "string" },
+        "fields": { "type": "object" }
+      }
+    },
+
+    "vectors": {
+      "type": "object",
+      "description": "指向向量库中的三向量（BGE-M3 同源）",
+      "properties": {
+        "collection": { "type": "string" },
+        "dense_point_id": { "type": ["string", "null"] },
+        "sparse_point_id": { "type": ["string", "null"] },
+        "colbert_point_id": { "type": ["string", "null"] },
+        "embedding_model": { "type": "string" }
+      }
+    },
+
+    "status": { "enum": ["active", "stale", "deleted"] },
+    "created_at": { "type": "string", "format": "date-time" }
+  }
+}

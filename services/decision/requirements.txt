@@ -1,0 +1,11 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+transformers==4.47.1
+torch==2.5.1
+huggingface_hub==0.27.0
+safetensors==0.4.5
+# Laya 官方推理包（Agent / system_one）。0.3.7 未发布到 PyPI，容器固定用 0.3.9；
+# 已核对 0.3.9 的 Agent(model_id_or_path, device, token, subfolder) 与
+# system_one(state, questions) 签名同 0.3.7，API 兼容。
+laya==0.3.9

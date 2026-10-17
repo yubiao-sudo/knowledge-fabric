@@ -1,0 +1,196 @@
+# 小模型统一托管清单（Model Registry）
+# 原则：统一推理后端 + 版本锁定 + 降级链 + 许可审查。
+# 后端约定：
+#   tei    -> Text Embeddings Inference（embedding / reranker / 决策）
+#   vllm   -> 生成类小模型（单实例多 LoRA 承载多任务头）
+#   local  -> 进程内加载（轻量、CPU 可跑）
+#   api    -> 外部托管（仅作降级备份，主链路自托管）
+
+version: 1
+default_backend: tei
+
+models:
+  # ---------------- 解析 ----------------
+  - id: layout-docling
+    stage: parse
+    task: layout_and_reading_order
+    backend: local
+    provider: docling
+    license: MIT
+    fallback: [layout-ppstructure, vlm-fallback]
+    notes: 复杂排版 PDF 的版面与阅读顺序；输出结构化文档树
+
+  - id: ocr-ppocrv5
+    stage: parse
+    task: ocr_multilingual
+    backend: local
+    provider: paddleocr/PP-OCRv5
+    license: Apache-2.0
+    fallback: [ocr-surya, ocr-tesseract]
+    notes: 中文最强，多语言支持
+
+  - id: table-ppstructure
+    stage: parse
+    task: table_to_html
+    backend: local
+    provider: paddleocr/PP-StructureV3
+    license: Apache-2.0
+    fallback: [table-structeqtable]
+    notes: 表格 → HTML/Markdown，保留表头
+
+  - id: formula-unimernet
+    stage: parse
+    task: formula_to_latex
+    backend: local
+    provider: UniMERNet
+    license: Apache-2.0
+    fallback: [formula-pix2tex]
+    notes: 科研/技术文档
+
+  - id: vlm-fallback
+    stage: parse
+    task: hard_page_vlm
+    backend: vllm
+    model_id: Qwen/Qwen2.5-VL-7B-Instruct
+    license: Apache-2.0
+    fallback: [ocr-olmocr]
+    notes: 疑难页兜底；成本约 GPT-4o 的 1/32
+
+  # ---------------- 清洗 ----------------
+  - id: lang-detect
+    stage: clean
+    task: language_detection
+    backend: local
+    provider: fastText lid.176
+    license: MIT
+    dims: null
+    notes: 176 语言；决定分语言稀疏索引路由
+
+  - id: boilerplate-bge-small
+    stage: clean
+    task: cross_page_boilerplate_detect
+    backend: tei
+    model_id: BAAI/bge-small-zh-v1.5
+    endpoint: ${TEI_EMBED_URL}
+    license: MIT
+    dims: 512
+    notes: 跨页样板（页眉/页脚/水印）语义聚类检测，补规则覆盖
+
+  # ---------------- 元数据抽取 ----------------
+  - id: ner-gliner
+    stage: enrich
+    task: ner_zero_shot
+    backend: local
+    provider: GLiNER
+    license: Apache-2.0
+    notes: 抽 SKU / 型号 / 价格 / 组织等实体
+
+  - id: pii-presidio
+    stage: enrich
+    task: pii_detection
+    backend: local
+    provider: presidio + 中文规则
+    license: MIT
+    notes: 合规必需
+
+  # ---------------- 增强（生成类小模型） ----------------
+  - id: gen-contextual
+    stage: enrich
+    task: contextual_prefix
+    backend: vllm
+    model_id: Qwen/Qwen2.5-3B-Instruct
+    license: Apache-2.0
+    fallback: [gen-contextual-small]
+    notes: 为每个子块生成 1–2 句文档级上下文
+
+  - id: gen-contextual-small
+    stage: enrich
+    task: contextual_prefix
+    backend: vllm
+    model_id: Qwen/Qwen2.5-1.5B-Instruct
+    license: Apache-2.0
+    notes: 成本敏感时的降级档
+
+  - id: gen-questions
+    stage: enrich
+    task: hypothetical_questions
+    backend: vllm
+    model_id: Qwen/Qwen2.5-1.5B-Instruct
+    license: Apache-2.0
+    notes: 每块生成 3–5 个可回答问题，与正文一并索引
+
+  # ---------------- 检索：嵌入 / 重排 ----------------
+  - id: embed-primary
+    stage: retrieve
+    task: embedding_dense_sparse_multivec
+    backend: tei
+    model_id: BAAI/bge-m3
+    endpoint: ${TEI_EMBED_URL}
+    license: MIT
+    dims: 1024
+    outputs: [dense, sparse, colbert]
+    fallback: [embed-e5]
+    notes: 一份权重出三向量；多语言首选
+
+  - id: embed-e5
+    stage: retrieve
+    task: embedding_dense
+    backend: tei
+    model_id: intfloat/multilingual-e5-large-instruct
+    license: MIT
+    dims: 1024
+    notes: dense 侧双路召回备选
+
+  - id: rerank-primary
+    stage: retrieve
+    task: rerank_cross_encoder
+    backend: tei
+    model_id: BAAI/bge-reranker-v2-m3
+    endpoint: ${TEI_RERANK_URL}
+    license: Apache-2.0
+    fallback: [rerank-minilm]
+    notes: 多语言 cross-encoder
+
+  # ---------------- 决策模型 ----------------
+  - id: decision-laya
+    stage: decide
+    task: policy_routing
+    backend: local
+    model_id: ${LAYA_MODEL_ID}
+    license: Apache-2.0
+    params: 421M
+    notes: System-1 决策模型；typed decision + 校准概率；~33ms
+
+  - id: decision-laya-multilingual
+    stage: decide
+    task: policy_routing_multilingual
+    backend: local
+    model_id: ${LAYA_MODEL_MULTILINGUAL_ID}
+    license: Apache-2.0
+    params: 322M
+    notes: 100+ 语言版本；多语言库使用
+
+  # ---------------- 校验 / 安全 / 缓存 ----------------
+  - id: ground-check
+    stage: generate
+    task: grounding_verification
+    backend: tei
+    model_id: BAAI/bge-reranker-v2-m3
+    license: Apache-2.0
+    notes: 复用重排模型做引用-证据一致性校验；不通过则拒答
+
+  - id: guard-content
+    stage: guard
+    task: content_moderation
+    backend: vllm
+    model_id: meta-llama/Llama-Guard-3-1B
+    license: Llama-3.2 Community
+    notes: 输入输出双向审核；多语言
+
+  - id: semcache-embed
+    stage: cache
+    task: semantic_cache
+    backend: tei
+    model_id: BAAI/bge-small-multilingual
+    license: MIT
+    notes: 语义缓存，阈值判定命中

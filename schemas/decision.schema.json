@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowledge-fabric.local/schemas/decision.schema.json",
+  "title": "Decision",
+  "description": "决策模型（Laya）输出契约：typed decision + 校准概率 + 可解释理由。用于策略路由、算力级联、拒答预判。",
+  "type": "object",
+  "required": ["query_id", "model", "profile", "escalate", "confidence", "trace_id"],
+  "properties": {
+    "query_id": { "type": "string" },
+    "trace_id": { "type": "string", "description": "全链路 trace，决策必须可解释可回溯" },
+
+    "model": {
+      "type": "object",
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "type": "string", "description": "decision-laya / decision-laya-multilingual" },
+        "version": { "type": "string" },
+        "params": { "type": "string" },
+        "latency_ms": { "type": "number" }
+      }
+    },
+
+    "profile": {
+      "enum": [
+        "naive", "hybrid_rerank", "exact_lookup", "hyde",
+        "multi_query", "decompose_agentic", "graph_global", "strict_refuse"
+      ],
+      "description": "选中的检索链路档位，见 configs/retrieval_profiles.yaml"
+    },
+    "escalate": {
+      "enum": ["none", "rerank", "llm_rerank", "agentic"],
+      "description": "算力级联档：先用便宜链路，低置信才升级"
+    },
+
+    "agentic": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "max_rounds": { "type": "integer", "maximum": 3 },
+        "stop": { "const": "saturation", "description": "无新增证据即停" },
+        "budget_tokens": { "type": "integer" }
+      }
+    },
+    "graph": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "mode": { "enum": ["entity_hops", "community_summary"] },
+        "max_hops": { "type": "integer" }
+      }
+    },
+
+    "answerable_prob": {
+      "type": "number", "minimum": 0, "maximum": 1,
+      "description": "拒答预判；低于阈值走 strict_refuse 或直接拒答"
+    },
+
+    "confidence": {
+      "type": "number", "minimum": 0, "maximum": 1,
+      "description": "决策自身置信度；低于阈值回退 safe_default"
+    },
+    "probabilities": {
+      "type": "object",
+      "description": "各候选 profile 的校准概率（Laya 输出，可用于 ECE 评测）",
+      "additionalProperties": { "type": "number" }
+    },
+    "calibration": {
+      "type": "object",
+      "properties": {
+        "method": { "type": "string" },
+        "temperature": { "type": "number" },
+        "ece": { "type": "number", "description": "期望校准误差，模型上线门槛指标" }
+      }
+    },
+
+    "features": {
+      "type": "object",
+      "description": "决策输入特征，用于线上增量训练",
+      "properties": {
+        "lang": { "type": "string" },
+        "length": { "type": "integer" },
+        "has_code_or_identifier": { "type": "boolean" },
+        "has_number_or_price": { "type": "boolean" },
+        "kb_scale": { "type": "integer" },
+        "session_turn": { "type": "integer" },
+        "historical_no_answer_rate": { "type": "number" }
+      }
+    },
+
+    "reason": { "type": "string", "description": "可解释理由，便于调优与人工审核" },
+    "fallback_used": { "type": "boolean", "description": "是否触发了安全回退" },
+    "mode": {
+      "enum": ["laya", "heuristic-fallback"],
+      "description": "如实暴露本次决策来自 Laya 真权重还是规则回退"
+    },
+    "threshold_basis": {
+      "enum": ["laya_top1_probability", "confidence"],
+      "description": "低置信护栏拿什么值去比阈值：Laya 结果用其概率分布 top-1（该 checkpoint 置信度未校准），heuristic 结果用自身 confidence"
+    },
+    "threshold_value": { "type": "number", "description": "实际参与阈值比较的值，便于事后审计为何采纳 / 丢弃某档位" }
+  }
+}

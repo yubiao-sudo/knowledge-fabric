@@ -1,0 +1,34 @@
+# 摄入流水线依赖（解析 / 清洗 / 切片 / 增强 / 嵌入 / 索引）
+# 核心链路只依赖下面第一段；其余为可选能力，按需装入独立镜像，缺失时自动降级。
+
+# --- 核心（必需）---
+pyyaml==6.0.2
+httpx==0.28.1
+pymupdf==1.25.1
+
+# --- 索引（可选，缺失时跳过落库）---
+qdrant-client==1.12.1
+psycopg[binary]==3.2.3
+
+# --- token 计量（可选；缺失时回退启发式计数）---
+transformers==4.47.1
+# tokenizers==0.21.0          # 仅需 tokenizer 时可只装这一项
+
+# --- 增强（可选，走 vLLM 的 OpenAI 兼容端点即可，无需本地 torch）---
+# 上下文前缀 / 假设问题：由 VLLM_URL 指向的 vLLM 承载
+
+# --- HTTP 接口（可选；控制台与 agent 接入用，缺失时 CLI 与流水线不受影响）---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.6
+
+# --- 解析增强（可选，按官方指引安装，体量大）---
+# pdfplumber==0.11.5          # 复杂版式兜底
+# docling                     # 版面 + 阅读顺序
+# paddleocr / paddlepaddle    # PP-OCRv5 / PP-StructureV3（扫描件、表格）
+# gliner                      # 多语言 zero-shot NER
+# keybert                     # 关键词（本仓库内置零成本词法版，可不装）
+# presidio-analyzer           # PII 检测
+
+# --- 开发 / 测试 ---
+pytest==8.3.4

@@ -1,0 +1,131 @@
+# 检索链路档位（Retrieval Profiles）
+# 由决策模型 Laya 输出 profile 名 + 置信度；低置信回退到 safe_default。
+# 成本档位：free < low < mid < high
+
+version: 1
+safe_default: hybrid_rerank
+
+global_budget:
+  max_latency_ms: 3000          # 单查询端到端硬上限（超时优雅降级）
+  max_context_tokens: 8000      # 送入 agent 的证据预算
+  max_agentic_rounds: 3         # Agentic 迭代硬上限
+
+profiles:
+  # 最便宜：仅稠密检索，不重排
+  naive:
+    cost: free
+    channels: [dense]
+    top_k: 20
+    rerank: false
+    fusion: none
+    timeout_ms: 800
+
+  # 基线：稠密 + 稀疏混合，RRF 融合 + cross-encoder 重排
+  hybrid_rerank:
+    cost: mid
+    channels: [dense, sparse]
+    top_k: 50
+    rerank: true
+    rerank_top_n: 4
+    fusion: rrf
+    fusion_k: 60
+    timeout_ms: 1500
+
+  # 含型号/价格/数字/代码的查询：偏稀疏 + 结构化精确过滤
+  exact_lookup:
+    cost: low
+    channels: [sparse, structured]
+    sparse_boost: 2.0
+    top_k: 40
+    rerank: true
+    rerank_top_n: 4
+    fusion: weighted
+    filters: [sku, price_range, spec]
+    timeout_ms: 1200
+
+  # 抽象 / 短查询：HyDE 提升召回
+  hyde:
+    cost: mid
+    channels: [dense, sparse]
+    hyde: true
+    top_k: 50
+    rerank: true
+    rerank_top_n: 4
+    fusion: rrf
+    timeout_ms: 2000
+
+  # 模糊查询：多查询扩展
+  multi_query:
+    cost: mid
+    channels: [dense, sparse]
+    query_expansion: {n: 3, mode: paraphrase}
+    fusion: rrf
+    top_k: 60
+    rerank: true
+    rerank_top_n: 4
+    timeout_ms: 2500
+
+  # 多跳：查询分解 + Agentic 迭代
+  decompose_agentic:
+    cost: high
+    channels: [dense, sparse]
+    decompose: true
+    agentic:
+      enabled: true
+      max_rounds: 3
+      stop: saturation          # 无新增证据即停
+      min_new_evidence: 1
+    rerank: true
+    rerank_top_n: 4
+    timeout_ms: 6000
+
+  # 聚合 / 汇总：Agentic + 图全局摘要
+  graph_global:
+    cost: high
+    channels: [dense, sparse, graph]
+    graph: {mode: community_summary, max_hops: 2}
+    agentic: {enabled: true, max_rounds: 2, stop: saturation}
+    rerank: true
+    timeout_ms: 8000
+
+  # 无答案倾向：严格阈值 + 拒答优先
+  strict_refuse:
+    cost: low
+    channels: [dense, sparse]
+    rerank: true
+    answerability_threshold: 0.55
+    on_low_score: refuse
+    timeout_ms: 1500
+
+# 融合权重（weighted 模式；learned 模式由 LTR 模型给出）
+# 注意：weighted 模式下**权重缺失的通道记 0 分**，故档位 channels 里出现的通道
+# 必须在此给出权重，否则该通道虽被召回也不会进入证据（exact_lookup 的 structured 即为必须项）。
+fusion_weights:
+  default: {dense: 0.6, sparse: 0.4}
+  exact_lookup: {dense: 0.3, sparse: 0.7, structured: 0.5}
+
+# 组装（assembly）策略
+#   parent_context_tokens: 父块作为**附加上下文**附带的 token 上限；0 = 不带（默认）。
+#       它**不替换** evidence.content——content 与 char_range 必须同源，否则
+#       「读到的内容」与「引用指向的区间」会不一致。
+#   backfill_parent_content: 是否用父块全文**替换** content（旧行为，默认 false）。
+#       开启后 content 与偏移仍属于命中子块，仅在消费方按 chunk_id 而非
+#       char_range 定位时才使用。
+#   acl_default_allow: 块没有任何 ACL 规则时是否放行。默认 true 保持兼容；
+#       多租户部署应改为 false（fail-closed）。
+#   answerability: 拒答判分的基准。
+#       fusion_score（旧行为）= 用 RRF/加权融合分比阈值。**实测该分没有区分度**：
+#           RRF 上界 1/(k+1)≈0.0164，可答与不可答查询的 top 分完全相同，
+#           于是 strict_refuse 的 0.55 永远达不到 → 越界查询畅通无阻。
+#       cosine = 改用归一化稠密余弦判分（实测可答 0.64~0.77 / 不可答 0.29~0.41）。
+assembly:
+  answerability: rerank
+  # 全局答案可达底线（归一化余弦）。实测分离度：
+  #   可答问题 0.64~0.77（MX-100 功率 / 密码长度 / 库表结构）
+  #   不可答   0.29~0.41（订机票 / 火星殖民 / 珠峰高度）
+  # 0.45 落在两侧之间。低于此值即拒答，**不再看融合分**。
+  answerability_floor: 0.57          # cosine 判据的全局回退（按库标定优先）
+  answerability_floor_rerank: 0.13   # cross-encoder 概率的全局回退（按库标定优先）
+  parent_context_tokens: 0
+  backfill_parent_content: false
+  acl_default_allow: true
